@@ -1,0 +1,2386 @@
+<!DOCTYPE html>
+<!--
+  IS 10262:2019 / IS 456:2000 Concrete Mix Design Calculator - v7
+  Prepared by: Himanshu Meena | Group: 3
+
+  REFERENCE DATA TO VERIFY against your own copy of the standards
+  (values as used by this file; none has been changed in v7)
+
+  1. IS 10262:2019 Table 5 - volume of coarse aggregate per unit volume of total aggregate, w/c 0.50
+       10 mm : Zone IV 0.54, III 0.52, II 0.50, I 0.48
+       20 mm : Zone IV 0.66, III 0.64, II 0.62, I 0.60
+       40 mm : Zone IV 0.73, III 0.72, II 0.71, I 0.69
+     The JS object "table5" is used for calculation; the HTML table repeats the same reference values for display. Both should remain consistent.
+     Correction: +/-0.01 for every -/+0.05 change of w/c from 0.50.
+  2. Water content for 50 mm slump, angular aggregate (JS "table34"): 10 mm 208, 20 mm 186, 40 mm 165 kg/m3.
+     Entrapped air: 10 mm 1.5 %, 20 mm 1.0 %, 40 mm 0.8 %.
+     Slump correction: +3 % of water per 25 mm above 50 mm (also applied downward below 50 mm - see warning).
+     Aggregate-shape water reduction: sub-angular 10, gravel with some crushed particles 15, rounded gravel 20 kg/m3.
+  3. Target mean strength: S (good control) 3.5 / 4.0 / 5.0 N/mm2 for M10-M15 / M20-M25 / M30-M60;
+     +1.0 added for "fair" control; X = 5.0 / 5.5 / 6.5 for the same groups. The page labels S as Table 2 and X as Table 1.
+  4. IS 456:2000 Table 5 durability (JS "durability" and gradeMinExposure): max free w/c and min cement kg/m3 -
+     mild 0.55/300/M20, moderate 0.50/300/M25, severe 0.45/320/M30, very severe 0.45/340/M35, extreme 0.40/360/M40.
+  5. 10 % preliminary increase of cementitious content when SCM is used (cited on the page as Cl. 5.4.1).
+  6. Pumpable concrete: coarse-aggregate reduction up to 10 % (cited as Cl. 5.5.2).
+  7. Initial field values for specific gravity (cement 3.15, SCM 2.20, coarse 2.74, fine 2.65, admixture 1.145) are
+     starting values in the inputs, not code values. They are no longer substituted into the calculation.
+
+  RANGES USED FOR VALIDATION THAT ARE NOT TAKEN FROM THE STANDARDS (confirm or change):
+     coarse-aggregate volume fraction 0.30 to 0.85 (CA_FRAC_MIN / CA_FRAC_MAX; an application plausibility range, NOT an IS 10262 limit), w/c 0.20 to 0.70 (WC_MIN / WC_MAX),
+     SCM replacement 0-50 %, admixture water reduction 0-40 %, admixture dosage 0-5 %, custom shape correction
+     0-40 kg/m3, slump warning above 180 mm, moisture warning above 5 % (coarse) / 10 % (fine), absorption warning above 3 %.
+
+  ANNEX A STATUS: MANUAL VERIFICATION. No Annex A values are embedded in this file because they were not
+  available from a verified source. The Validation panel is a comparison table: enter the Annex A inputs in
+  Steps 1-8, type the Annex A printed results in the Reference column, and read the Match / Mismatch status.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Concrete Mix Design Calculator — IS 10262:2019</title>
+<style>
+  :root{
+    --paper:#F6F5F2;
+    --paper-raised:#FFFFFF;
+    --ink:#20211E;
+    --ink-soft:#5B5B53;
+    --line:#E2DFD7;
+    --line-strong:#B9B3A6;
+    --rust:#9C3F1E;
+    --rust-soft:#c9855f36;
+    --steel:#284A68;
+    --steel-soft:#284a6820;
+    --pass:#3D6B4A;
+    --pass-soft:#3d6b4a1c;
+    --warn:#93600D;
+    --warn-soft:#93600d1c;
+    --fail:#9C3F1E;
+    --fail-soft:#9c3f1e1c;
+    --radius: 4px;
+    --radius-card: 10px;
+    --shadow-card: 0 1px 2px rgba(32,33,30,0.05), 0 1px 6px rgba(32,33,30,0.04);
+    --serif: Georgia, 'Times New Roman', 'Noto Serif', serif;
+    --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background-color:var(--paper);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:15px;
+    line-height:1.55;
+    padding-bottom:80px;
+  }
+  .sheet{ max-width:960px; margin:0 auto; padding:0 20px; }
+
+  #err-banner{
+    display:none;
+    background:#9C3F1E; color:#fff;
+    font-family:var(--mono); font-size:12.5px;
+    padding:10px 16px; margin:16px 20px 0;
+    border-radius:var(--radius);
+  }
+
+  /* ---------- Title block ---------- */
+  .titleblock{
+    margin-top:28px; border:1px solid var(--line); background:var(--paper-raised);
+    border-radius:var(--radius-card); box-shadow:var(--shadow-card); overflow:hidden;
+  }
+  .titleblock-top{
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding:22px 24px 14px; border-bottom:1px solid var(--line); gap:16px; flex-wrap:wrap;
+  }
+  .eyebrow{ font-family:var(--mono); font-size:11.5px; font-weight:600; color:var(--steel); letter-spacing:0.08em; text-transform:uppercase; margin-bottom:6px; }
+  .titleblock h1{ font-family:var(--serif); font-weight:700; font-size:27px; margin:0; letter-spacing:-0.01em; line-height:1.2; }
+  .subtitle-chip{ font-family:var(--mono); font-size:12px; color:var(--ink-soft); margin-top:8px; letter-spacing:0.01em; }
+  .subtitle-chip strong{color:var(--ink);}
+  .titleblock-fields{ display:grid; grid-template-columns:repeat(6,1fr); font-family:var(--mono); }
+  .tf{ padding:10px 14px; border-right:1px solid var(--line); border-top:1px solid var(--line); }
+  .tf:nth-child(6n){border-right:none;}
+  .tf label{ display:block; font-size:10px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:4px; }
+  .tf .tf-val{font-size:15px;font-weight:700;}
+  .tf .tf-val.small{font-size:12.5px;font-weight:600;}
+  .scope-note{ font-size:12px; color:var(--ink-soft); padding:10px 20px 0; max-width:90ch; }
+
+  /* ---------- Step navigation rail ---------- */
+  .step-nav{
+    display:flex; align-items:center; gap:4px; overflow-x:auto; -webkit-overflow-scrolling:touch;
+    margin-top:16px; padding:10px 6px; background:var(--paper-raised); border:1px solid var(--line);
+    border-radius:var(--radius-card); box-shadow:var(--shadow-card);
+  }
+  .step-nav a, .step-nav button.step-nav-link{
+    flex:0 0 auto; font-family:var(--mono); font-size:11px; font-weight:600; color:var(--ink-soft);
+    text-decoration:none; padding:6px 10px; border-radius:20px; white-space:nowrap;
+    background:none; border:none; cursor:pointer;
+  }
+  .step-nav a:hover, .step-nav button.step-nav-link:hover{ background:var(--steel-soft); color:var(--steel); }
+  .step-nav .arrow{ color:var(--line-strong); font-size:11px; flex:0 0 auto; }
+  .step-nav .final-link{ color:var(--rust); font-weight:700; }
+
+  /* ---------- Calculate action bar ---------- */
+  .calcbar{
+    display:flex; align-items:center; gap:14px; margin-top:16px; padding:16px 20px;
+    background:var(--steel); border-radius:var(--radius-card); box-shadow:var(--shadow-card);
+    flex-wrap:wrap;
+  }
+  .calcbtn{
+    font-family:var(--sans); font-weight:700; font-size:14px; letter-spacing:0.02em;
+    padding:12px 26px; border:none; border-radius:var(--radius); cursor:pointer;
+    background:#fff; color:var(--steel);
+  }
+  .calcbtn:hover{ background:#EFEFEF; }
+  .calc-updated{
+    font-family:var(--mono); font-size:12.5px; color:#fff; opacity:0; transition:opacity 0.25s ease;
+  }
+  .calc-updated.show{ opacity:1; }
+  .calcbar-note{ font-family:var(--sans); font-size:12px; color:#ffffffb0; flex:1 1 220px; min-width:180px; }
+
+  /* ---------- Steps (now cards) ---------- */
+  .step{
+    display:grid; grid-template-columns:52px 1fr; gap:0;
+    margin-top:16px; padding:20px 22px 22px;
+    background:var(--paper-raised); border:1px solid var(--line);
+    border-radius:var(--radius-card); box-shadow:var(--shadow-card);
+    scroll-margin-top:16px;
+  }
+  .step-num{ font-family:var(--serif); font-size:32px; font-weight:700; color:var(--line-strong); line-height:1.15; }
+  .step-body{ min-width:0; }
+  .step-head{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:4px; }
+  .step-head h2{ font-family:var(--serif); font-weight:700; font-size:19px; margin:0; }
+  .step-head .clause{ font-family:var(--mono); font-size:10.5px; color:var(--ink-soft); background:var(--paper); padding:2px 7px; border-radius:10px; }
+  .step-note{ font-size:13px; color:var(--ink-soft); max-width:70ch; margin:4px 0 16px; }
+
+  /* ---------- Field grid ---------- */
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(210px,1fr)); gap:14px 18px; margin-bottom:6px; }
+  .field{display:flex;flex-direction:column;gap:5px;}
+  .field label{ font-size:12px; color:var(--ink-soft); display:flex; justify-content:space-between; gap:6px; }
+  .field label .unit{font-family:var(--mono);color:var(--line-strong);}
+  select,input[type=number],input[type=text]{
+    font-family:var(--mono); font-size:14px; padding:10px 10px;
+    background:var(--paper); border:1px solid var(--line-strong); border-radius:var(--radius);
+    color:var(--ink); width:100%; min-height:40px;
+  }
+  select:focus,input:focus{ outline:2px solid var(--steel); outline-offset:1px; border-color:var(--steel); }
+  .checkfield{ display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink); padding-top:6px; min-height:40px; }
+  .checkfield input{width:18px;height:18px;accent-color:var(--steel);}
+
+  /* ---------- Reference tables ---------- */
+  .reftable-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:var(--radius); margin:10px 0 18px; }
+  .reftable{ width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12.5px; margin:0; min-width:420px; }
+  .reftable caption{ text-align:left; font-family:var(--sans); font-size:11.5px; color:var(--ink-soft); margin-bottom:6px; }
+  .reftable th,.reftable td{ border:1px solid var(--line); padding:7px 10px; text-align:left; }
+  .reftable th{ background:var(--paper); font-weight:700; text-transform:uppercase; font-size:10.5px; letter-spacing:0.03em; position:sticky; top:0; }
+  .reftable tr.hit td{background:var(--steel-soft);}
+
+  /* ---------- Computation lines ---------- */
+  .calc{ background:var(--paper); border:1px solid var(--line); border-left:3px solid var(--steel); border-radius:var(--radius); padding:14px 16px; margin:14px 0; font-family:var(--mono); font-size:13px; }
+  .calc .line{ display:flex; justify-content:space-between; gap:14px; padding:4px 0; border-bottom:1px dashed var(--line); }
+  .calc .line:last-child{border-bottom:none;}
+  .calc .line .k{color:var(--ink-soft);}
+  .calc .line .v{font-weight:700;white-space:nowrap;}
+  .calc .line.result{ border-top:1px solid var(--line-strong); margin-top:4px; padding-top:9px; font-size:14.5px; }
+  .calc .line.result .v{color:var(--rust);}
+
+  .badge{ display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:11.5px; padding:5px 10px 5px 8px; border-radius:20px; margin-top:8px; margin-right:6px; font-weight:600; }
+  .badge.pass{background:var(--pass-soft);color:var(--pass);}
+  .badge.warn{background:var(--warn-soft);color:var(--warn);}
+  .badge.fail{background:var(--fail-soft);color:var(--fail);}
+  .badge.pass::before{content:'✓';}
+  .badge.warn::before{content:'⚠';}
+  .badge.fail::before{content:'✕';}
+
+  details.adv{ margin-top:14px; border:1px solid var(--line); background:var(--paper); border-radius:var(--radius); }
+  details.adv summary{ cursor:pointer; padding:12px 14px; font-size:12.5px; font-weight:700; color:var(--steel); list-style:none; }
+  details.adv summary::-webkit-details-marker{display:none;}
+  details.adv summary::before{content:'+ ';}
+  details.adv[open] summary::before{content:'– ';}
+  details.adv .adv-body{padding:4px 14px 16px;}
+
+  /* ---------- Summary / report ---------- */
+  .report{ margin-top:16px; border:1px solid var(--line); background:var(--paper-raised); border-radius:var(--radius-card); box-shadow:var(--shadow-card); page-break-inside:avoid; }
+  .report-head{ padding:20px 22px 4px; }
+  .prepared-by{ margin-top:10px; font-family:var(--mono); font-size:11px; letter-spacing:0.04em; color:var(--steel); }
+  .prepared-by strong{ color:inherit; font-weight:700; }
+  .report-prepared{ margin-top:8px; font-family:var(--mono); font-size:10.5px; letter-spacing:0.04em; color:var(--steel); }
+  .report-eyebrow{ font-family:var(--mono); font-size:11px; font-weight:700; color:var(--steel); letter-spacing:0.08em; text-transform:uppercase; }
+  .report-head h2{ font-family:var(--serif); font-weight:700; font-size:23px; margin:6px 0 2px; }
+  .report-grade{ font-family:var(--mono); font-size:13px; color:var(--ink-soft); }
+  .report-grade strong{ color:var(--ink); }
+  .ratio-line{ font-family:var(--mono); font-size:26px; font-weight:700; padding:14px 22px 4px; color:var(--rust); }
+  .ratio-sub{ font-family:var(--mono); font-size:12px; color:var(--ink-soft); padding:0 22px 14px; }
+
+  .report-stats{ display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); margin:0 22px 18px; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; }
+  .stat{ background:var(--paper); padding:10px 14px; }
+  .stat-label{ display:block; font-family:var(--sans); font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-soft); margin-bottom:3px; }
+  .stat-val{ display:block; font-family:var(--mono); font-size:15px; font-weight:700; color:var(--ink); }
+
+  table.qty{ width:100%; min-width:480px; border-collapse:collapse; font-family:var(--mono); font-size:13.5px; }
+  table.qty th,table.qty td{ padding:11px 22px; border-top:1px solid var(--line); text-align:left; }
+  table.qty th{ text-align:right; font-weight:600; color:var(--ink-soft); text-transform:uppercase; font-size:10.5px; letter-spacing:0.04em; white-space:nowrap; }
+  table.qty td.num{text-align:right;font-weight:700;}
+  table.qty tr.sub td{color:var(--ink-soft);font-weight:400;font-size:12px;}
+
+  /* ---------- Design checks ---------- */
+  .design-checks{ margin:18px 22px; padding-top:16px; border-top:1px solid var(--line); }
+  .design-checks h3{ font-family:var(--serif); font-size:15px; margin:0 0 10px; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-soft); }
+  .checkrow{ display:flex; align-items:baseline; gap:6px 10px; flex-wrap:wrap; padding:7px 0; font-family:var(--sans); font-size:13px; border-bottom:1px dashed var(--line); }
+  .checkrow:last-child{ border-bottom:none; }
+  .checkicon{ font-family:var(--mono); font-weight:700; width:16px; flex:0 0 auto; }
+  .checkrow.pass .checkicon{ color:var(--pass); }
+  .checkrow.warn .checkicon{ color:var(--warn); }
+  .checkrow.fail .checkicon{ color:var(--fail); }
+  .checkrow.info .checkicon{ color:var(--steel); }
+  .badge.info{background:var(--steel-soft);color:var(--steel);}
+  .badge.info::before{content:'i';font-weight:700;}
+  .val-match{color:var(--pass);font-weight:700;font-family:var(--mono);font-size:12.5px;}
+  .val-miss{color:var(--fail);font-weight:700;font-family:var(--mono);font-size:12.5px;}
+  .val-na{color:var(--ink-soft);font-family:var(--mono);font-size:12px;}
+  .val-review{color:var(--warn);font-weight:700;font-family:var(--mono);font-size:12.5px;}
+  .assump{ margin:18px 22px; padding-top:16px; border-top:1px solid var(--line); }
+  .assump h3{ font-family:var(--serif); font-size:15px; margin:0 0 10px; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-soft); }
+  .assump-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; }
+  .assump-item{ background:var(--paper-raised); padding:7px 10px; display:flex; flex-direction:column; gap:1px; }
+  .assump-item .ak{ font-size:10.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.04em; }
+  .assump-item .av{ font-family:var(--mono); font-size:12.5px; font-weight:600; overflow-wrap:anywhere; }
+  .vl-box{ margin:18px 22px; padding:12px 14px; border:1px solid var(--line); border-left:3px solid var(--steel); background:var(--paper); border-radius:var(--radius); }
+  .vl-box h3{ font-family:var(--serif); font-size:15px; margin:0 0 6px; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-soft); }
+  .vl-box ul{ margin:0 0 8px; padding-left:18px; font-size:12px; color:var(--ink-soft); line-height:1.5; }
+  .vl-box .vl-status{ font-family:var(--mono); font-size:12px; margin:3px 0 0; color:var(--ink); }
+  .testcase{ margin-top:12px; border:1px solid var(--line); border-radius:var(--radius); background:var(--paper-raised); }
+  .testcase .tc-head{ padding:10px 12px; border-bottom:1px solid var(--line); }
+  .testcase .tc-head strong{ font-family:var(--serif); font-size:14px; }
+  .testcase .tc-inputs{ font-family:var(--mono); font-size:11.5px; color:var(--ink-soft); margin-top:2px; overflow-wrap:anywhere; }
+  .testcase .tc-body{ padding:6px 12px 10px; }
+  #validation table td, #validation table th{ vertical-align:middle; }
+  .checklabel{ font-weight:600; flex:0 0 auto; }
+  .checknote{ font-family:var(--mono); font-size:12px; color:var(--ink-soft); }
+
+  .btnrow{display:flex;gap:10px;padding:6px 22px 18px;flex-wrap:wrap;}
+  button.act{ font-family:var(--sans); font-weight:700; font-size:13px; padding:10px 18px; border:1.5px solid var(--ink); background:var(--ink); color:#fff; border-radius:var(--radius); cursor:pointer; }
+  button.act.ghost{background:transparent;color:var(--ink);}
+  button.act:hover{opacity:0.85;}
+
+  .disclaimer{ font-size:12px; color:var(--ink-soft); border-top:1px dashed var(--line); margin:0; padding:14px 22px 20px; }
+  footer{ text-align:center; font-family:var(--mono); font-size:11px; color:var(--ink-soft); margin-top:30px; }
+
+  @media print{
+    body{padding-bottom:0;background:#fff;}
+    .no-print{display:none !important;}
+    .step{page-break-inside:avoid; box-shadow:none;}
+    .report{box-shadow:none;}
+    .design-checks{page-break-inside:avoid;}
+    .assump,.vl-box{page-break-inside:avoid;}
+    /* input controls and reference tables are not needed on paper: the report repeats the inputs under
+       "Design Assumptions & Inputs"; the calculation lines of each step stay visible */
+    .step .grid, .step .checkfield, .step .reftable-wrap, .step .field, .report .grid,
+    .calcbar, .step-nav, .btnrow, details#validation, details#testpanel, #trialmix{display:none !important;}
+    details.adv summary{display:none;}
+    details.adv .adv-body{display:block;}
+    .assump-grid, .vl-box{border-color:#999;}
+  }
+  @media (max-width:600px){
+    .titleblock-fields{grid-template-columns:repeat(2,1fr);}
+    .tf:nth-child(6n){border-right:1px solid var(--line);}
+    .tf:nth-child(2n){border-right:none;}
+    .step{grid-template-columns:30px 1fr;}
+    .step-num{font-size:22px;}
+    .report-stats{grid-template-columns:1fr;}
+    .calcbar{flex-direction:column; align-items:stretch;}
+    .calcbtn{width:100%;}
+    .calc .line{flex-wrap:wrap; gap:2px 14px;}
+    .calc .line .v{white-space:normal;}
+    .ratio-line{font-size:20px;}
+  }
+  @media (max-width:420px){
+    .titleblock-fields{grid-template-columns:1fr 1fr;}
+    .tf{padding:8px 10px;}
+    .step{grid-template-columns:24px 1fr; padding:16px 14px 18px;}
+    .step-head h2{font-size:17px;}
+    .btnrow{flex-direction:column;}
+    .btnrow button.act{width:100%;}
+  }
+</style>
+</head>
+<body>
+<div id="err-banner" role="alert" aria-live="assertive"></div>
+<div class="sheet">
+
+  <div class="titleblock">
+    <div class="titleblock-top">
+      <div>
+        <div class="eyebrow">IS 10262:2019</div>
+        <h1>Concrete Mix Design Calculator</h1>
+        <div class="subtitle-chip"><strong>RCC</strong> &nbsp;•&nbsp; <strong>M10–M60</strong> &nbsp;•&nbsp; IS 456 Durability Checks</div>
+        <div class="prepared-by">Prepared by: <strong>Himanshu Meena</strong> &nbsp;•&nbsp; Group: <strong>3</strong></div>
+      </div>
+    </div>
+    <div class="titleblock-fields">
+      <div class="tf"><label>Grade</label><div class="tf-val" id="tf-grade">M25</div></div>
+      <div class="tf"><label>Exposure</label><div class="tf-val small" id="tf-exposure">Moderate</div></div>
+      <div class="tf"><label>Agg. size</label><div class="tf-val" id="tf-maxsize">20 mm</div></div>
+      <div class="tf"><label>FA zone</label><div class="tf-val" id="tf-zone">II</div></div>
+      <div class="tf"><label>Free w/c</label><div class="tf-val" id="tf-wc">0.50</div></div>
+      <div class="tf"><label>Cement:FA:CA</label><div class="tf-val small" id="tf-ratio">—</div></div>
+    </div>
+  </div>
+  <p class="scope-note">Scope: IS 10262:2019 Section 2 — ordinary and standard grades, <strong>M10 to M60</strong>, for <strong>reinforced concrete (RCC)</strong>, with durability requirements checked against IS 456:2000. Plain concrete (PCC) uses different durability limits and is not covered. Grades M65 and above (Section 3, high‑strength concrete) use different water-content, w/cm and aggregate tables and are also not covered by this tool.</p>
+  <p class="scope-note" id="scmwarn">SCM (fly ash / GGBS / silica fume) replacement percentages, admixture water-reduction percentages, and the pumpability adjustment are all trial inputs — this tool does not independently certify that a given value is code-compliant for your materials; establish them from the applicable material standard, project specification and trial mixes.</p>
+
+  <nav class="step-nav no-print" aria-label="Section navigation">
+    <button type="button" class="step-nav-link" data-target="step1">01 Design</button><span class="arrow">→</span>
+    <button type="button" class="step-nav-link" data-target="step2">02 Strength</button><span class="arrow">→</span>
+    <button type="button" class="step-nav-link" data-target="step3">03 w/c Ratio</button><span class="arrow">→</span>
+    <button type="button" class="step-nav-link" data-target="step4">04 Water</button><span class="arrow">→</span>
+    <button type="button" class="step-nav-link" data-target="step5">05 Cement</button><span class="arrow">→</span>
+    <button type="button" class="step-nav-link" data-target="step6">06 Aggregate</button><span class="arrow">→</span>
+    <button type="button" class="step-nav-link" data-target="step7">07 Volume</button><span class="arrow">→</span>
+    <button type="button" class="step-nav-link" data-target="step8">08 Moisture</button><span class="arrow">→</span>
+    <button type="button" class="step-nav-link final-link" data-target="finalmix">FINAL MIX</button>
+  </nav>
+
+  <div class="calcbar no-print">
+    <button type="button" class="calcbtn" id="calcBtn">Calculate Mix Design</button>
+    <span class="calc-updated" id="calcUpdated">✓ Calculation updated</span>
+    <span class="calcbar-note">The sheet already recalculates live as you edit any field — use this if you want an explicit refresh point.</span>
+  </div>
+
+  <!-- STEP 1 -->
+  <div class="step" id="step1">
+    <div class="step-num">01</div>
+    <div class="step-body">
+      <div class="step-head"><h2>Design stipulations</h2><span class="clause">Cl. 4.1</span></div>
+      <p class="step-note">Basic requirements of the concrete: grade, exposure, workability and the materials to be used.</p>
+      <div class="grid">
+        <div class="field">
+          <label for="grade">Grade of concrete</label>
+          <select autocomplete="off" id="grade" aria-describedby="hsc-note">
+            <option>M10</option><option>M15</option><option>M20</option>
+            <option selected>M25</option><option>M30</option><option>M35</option>
+            <option>M40</option><option>M45</option><option>M50</option>
+            <option>M55</option><option>M60</option>
+            <option disabled>M65 (Section 3 - HSC)</option><option disabled>M70 (Section 3 - HSC)</option>
+            <option disabled>M75 (Section 3 - HSC)</option><option disabled>M80 (Section 3 - HSC)</option>
+          </select>
+          <span class="badge info" id="hsc-note" style="white-space:normal;margin-top:4px;">Grades ≥ M65 require Section 3 (High Strength Concrete) equations and are beyond the scope of this calculator.</span>
+        </div>
+        <div class="field">
+          <label for="exposure">Exposure condition <span class="unit">IS 456 Tbl.5</span></label>
+          <select autocomplete="off" id="exposure">
+            <option value="mild">Mild</option>
+            <option value="moderate" selected>Moderate</option>
+            <option value="severe">Severe</option>
+            <option value="verysevere">Very severe</option>
+            <option value="extreme">Extreme</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="cementtype">Type of cement <span class="unit">reference only</span></label>
+          <select autocomplete="off" id="cementtype">
+            <option>OPC 33 Grade</option>
+            <option selected>OPC 43 Grade</option>
+            <option>OPC 53 Grade</option>
+            <option>PPC (Fly ash based)</option>
+            <option>PSC (Slag based)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="maxsize">Nominal max. aggregate size <span class="unit">mm</span></label>
+          <select autocomplete="off" id="maxsize">
+            <option value="10">10</option>
+            <option value="20" selected>20</option>
+            <option value="40">40</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="aggshape">Type of coarse aggregate</label>
+          <select autocomplete="off" id="aggshape">
+            <option value="0">Angular (crushed)</option>
+            <option value="10">Sub-angular</option>
+            <option value="15">Gravel with some crushed particles</option>
+            <option value="20">Rounded gravel</option>
+            <option value="custom">Custom / from trial data</option>
+          </select>
+        </div>
+        <div class="field" id="aggshapecustomwrap" style="display:none;">
+          <label for="aggshapecustom">Water reduction for aggregate shape <span class="unit">kg/m³, Cl. 5.3</span></label>
+          <input autocomplete="off" type="number" id="aggshapecustom" value="0" min="0" max="40" step="1">
+          <span class="step-note" style="margin:2px 0 0;">Use project/trial data where applicable.</span>
+        </div>
+        <div id="aggshape-badge"></div>
+        <div class="field">
+          <label for="fazone">Zone of fine aggregate <span class="unit">IS 383</span></label>
+          <select autocomplete="off" id="fazone">
+            <option value="I">Zone I</option>
+            <option value="II" selected>Zone II</option>
+            <option value="III">Zone III</option>
+            <option value="IV">Zone IV</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="checkfield" style="padding-top:22px;">
+            <input autocomplete="off" type="checkbox" id="manufacturedsand">
+            <span>Fine aggregate is crushed / manufactured sand</span>
+          </label>
+        </div>
+        <div class="field">
+          <label for="slump">Workability — slump <span class="unit">mm</span></label>
+          <input autocomplete="off" type="number" id="slump" value="75" min="0" step="5">
+        </div>
+        <div class="field">
+          <label for="placing">Method of concrete placing</label>
+          <select autocomplete="off" id="placing">
+            <option>Manual / chute — normal</option>
+            <option>Pumpable concrete</option>
+          </select>
+        </div>
+        <div class="field" id="pumpredwrap" style="display:none;">
+          <label for="pumpreduction">Coarse-aggregate reduction for pumping <span class="unit">%, up to 10 (Cl. 5.5.2)</span></label>
+          <input autocomplete="off" type="number" id="pumpreduction" value="10" min="0" max="10" step="1">
+        </div>
+        <div id="pump-badge"></div>
+        <div class="field">
+          <label for="sitecontrol">Degree of site control</label>
+          <select autocomplete="off" id="sitecontrol">
+            <option value="good" selected>Good</option>
+            <option value="fair">Fair</option>
+          </select>
+        </div>
+      </div>
+      <div id="slump-badge"></div>
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="step" id="step2">
+    <div class="step-num">02</div>
+    <div class="step-body">
+      <div class="step-head"><h2>Target mean strength</h2><span class="clause">Cl. 4.2, Tbl. 1 &amp; Tbl. 2</span></div>
+      <p class="step-note">f'ck is the higher of f<sub>ck</sub> + 1.65S and f<sub>ck</sub> + X — the second term guarantees a minimum margin for lower grades even when S is small.</p>
+
+      <div class="reftable-wrap">
+      <table class="reftable" id="table2">
+        <caption>Table 2 — Assumed standard deviation, S (good site control; add 1 N/mm² if control is only "fair")</caption>
+        <thead><tr><th>Grade group</th><th>S, N/mm²</th></tr></thead>
+        <tbody>
+          <tr id="row-t2-a"><td>M10, M15</td><td>3.5</td></tr>
+          <tr id="row-t2-b"><td>M20, M25</td><td>4.0</td></tr>
+          <tr id="row-t2-c"><td>M30 – M60</td><td>5.0</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="reftable-wrap">
+      <table class="reftable" id="table1">
+        <caption>Table 1 — Margin factor, X</caption>
+        <thead><tr><th>Grade group</th><th>X, N/mm²</th></tr></thead>
+        <tbody>
+          <tr id="row-t1-a"><td>M10, M15</td><td>5.0</td></tr>
+          <tr id="row-t1-b"><td>M20, M25</td><td>5.5</td></tr>
+          <tr id="row-t1-c"><td>M30 – M60</td><td>6.5</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="checkfield">
+        <input autocomplete="off" type="checkbox" id="customS">
+        <label for="customS">Use standard deviation established from ≥30 test results, instead of Table 2</label>
+      </div>
+      <div class="grid" id="customSwrap" style="display:none;margin-top:10px;">
+        <div class="field">
+          <label for="Sinput">Established standard deviation <span class="unit">N/mm²</span></label>
+          <input autocomplete="off" type="number" id="Sinput" value="4.0" step="0.1" min="0">
+        </div>
+      </div>
+      <div id="s-badge"></div>
+
+      <div class="calc">
+        <div class="line"><span class="k">f<sub>ck</sub> — characteristic compressive strength</span><span class="v" id="c-fck">—</span></div>
+        <div class="line"><span class="k">S used <span id="c-Ssrc"></span></span><span class="v" id="c-S">—</span></div>
+        <div class="line"><span class="k">f<sub>ck</sub> + 1.65S</span><span class="v" id="c-165s">—</span></div>
+        <div class="line"><span class="k">f<sub>ck</sub> + X (X = <span id="c-X">—</span>)</span><span class="v" id="c-fckX">—</span></div>
+        <div class="line result"><span class="k">f'<sub>ck</sub> — target mean strength (higher of the two)</span><span class="v" id="c-ftarget">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="step" id="step3">
+    <div class="step-num">03</div>
+    <div class="step-body">
+      <div class="step-head"><h2>Water–cement ratio</h2><span class="clause">Cl. 5.1, Fig. 1, IS 456 Tbl. 5</span></div>
+      <p class="step-note">The strength-based w/c ratio is to be obtained by reading the applicable strength–w/c curve in IS 10262:2019 Fig. 1 for the selected cement type and target mean strength (Curve 1: OPC 33 / expected 28‑day strength 33–&lt;43 N/mm²; Curve 2: OPC 43 / 43–&lt;53 N/mm²; Curve 3: OPC 53 / ≥53 N/mm²). This calculator does not derive that value from Fig. 1 itself — enter the value you read from the curve below. <strong>The value you enter is the value used</strong> — it is checked against the applicable IS 456:2000 Table 5 durability limit and flagged below, but it is not silently replaced. If it exceeds the maximum permitted w/c for the selected exposure, the design is invalid and must be revised by hand.</p>
+
+      <div class="reftable-wrap">
+      <table class="reftable" id="table5durability">
+        <caption>IS 456:2000, Table 5 — Durability requirements for RCC, normal exposure (min. cement content shown is the 20mm-aggregate basis; Step 5 lets you adjust it for other sizes as an engineering assumption)</caption>
+        <thead><tr><th>Exposure</th><th>Max. free w/c</th><th>Min. cement content, kg/m³</th><th>Min. grade</th></tr></thead>
+        <tbody>
+          <tr id="row-mild"><td>Mild</td><td>0.55</td><td>300</td><td>M20</td></tr>
+          <tr id="row-moderate"><td>Moderate</td><td>0.50</td><td>300</td><td>M25</td></tr>
+          <tr id="row-severe"><td>Severe</td><td>0.45</td><td>320</td><td>M30</td></tr>
+          <tr id="row-verysevere"><td>Very severe</td><td>0.45</td><td>340</td><td>M35</td></tr>
+          <tr id="row-extreme"><td>Extreme</td><td>0.40</td><td>360</td><td>M40</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="grid">
+        <div class="field">
+          <label for="wc">Selected / adopted water–cement ratio (w/c) <span class="unit">user input — trial value</span></label>
+          <input autocomplete="off" type="number" id="wc" value="0.50" step="0.01" min="0.2" max="0.7">
+          <span class="step-note" style="margin:2px 0 0;">Not an IS-prescribed value — select it from IS 10262:2019 Fig. 1 for your cement's strength curve, or from trial-mix data, then confirm it against the durability limit below.</span>
+        </div>
+        <div class="field">
+          <label for="figwc">w/c read from Fig. 1 or trial data <span class="unit">advisory, optional</span></label>
+          <input autocomplete="off" type="number" id="figwc" value="" min="0.2" max="0.7" step="0.01" placeholder="enter your reading">
+          <span class="step-note" style="margin:2px 0 0;">Nothing is pre-filled: this file does not contain the Fig. 1 curve. Read the w/c for the target mean strength shown below on the curve for your cement, or use trial data.</span>
+        </div>
+        <div class="field">
+          <label for="figtol">Accepted deviation from that reading <span class="unit">± w/c, advisory</span></label>
+          <input autocomplete="off" type="number" id="figtol" value="" min="0" step="0.01" placeholder="enter your tolerance">
+          <span class="step-note" style="margin:2px 0 0;">Your own engineering tolerance. The check stays inactive until both fields are filled, and it can only WARN.</span>
+        </div>
+      </div>
+      <div class="calc">
+        <div class="line"><span class="k">Target mean strength f'<sub>ck</sub> from Step 2 (use this to read Fig. 1)</span><span class="v" id="c-ftarget3">—</span></div>
+      </div>
+      <div id="wc-badge"></div>
+      <div id="wcstrength-badge"></div>
+    </div>
+  </div>
+
+  <!-- STEP 4 -->
+  <div class="step" id="step4">
+    <div class="step-num">04</div>
+    <div class="step-body">
+      <div class="step-head"><h2>Water content</h2><span class="clause">Cl. 5.2, 5.3 — Tbl. 3 &amp; Tbl. 4</span></div>
+      <p class="step-note">Base water demand is read for a 50 mm slump with angular aggregate, then corrected for actual slump, aggregate shape, and any water-reducing admixture.</p>
+
+      <div class="reftable-wrap">
+      <table class="reftable" id="table34">
+        <caption>Table 3 (entrapped air) &amp; Table 4 (water content) — per m³, 50 mm slump, angular aggregate</caption>
+        <thead><tr><th>Max. aggregate size, mm</th><th>Entrapped air, %</th><th>Water content, kg/m³</th></tr></thead>
+        <tbody>
+          <tr id="row-size10"><td>10</td><td>1.5</td><td>208</td></tr>
+          <tr id="row-size20"><td>20</td><td>1.0</td><td>186</td></tr>
+          <tr id="row-size40"><td>40</td><td>0.8</td><td>165</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="checkfield">
+        <input autocomplete="off" type="checkbox" id="customAir">
+        <label for="customAir">Use measured entrapped air from site data (≥5 results), instead of Table 3</label>
+      </div>
+      <div class="grid" id="customAirWrap" style="display:none;margin-top:10px;margin-bottom:10px;">
+        <div class="field">
+          <label for="airInput">Measured entrapped air <span class="unit">% of volume</span></label>
+          <input autocomplete="off" type="number" id="airInput" value="1.0" step="0.1" min="0" max="5">
+        </div>
+      </div>
+      <div id="air-badge"></div>
+
+      <div class="grid">
+        <div class="field">
+          <label for="admixtype">Admixture type</label>
+          <select autocomplete="off" id="admixtype">
+            <option value="none">None</option>
+            <option value="plasticizer">Plasticizer (water-reducing, 5–10%)</option>
+            <option value="superplasticizer" selected>Superplasticizer (high-range, 20–30%+)</option>
+          </select>
+        </div>
+        <div class="field" id="admixredwrap">
+          <label for="admixreduction">Trial water reduction from admixture <span class="unit">%</span></label>
+          <input autocomplete="off" type="number" id="admixreduction" value="20" min="0" max="40" step="1">
+        </div>
+        <div class="field">
+          <label for="admixdose">Admixture dosage <span class="unit">% of cementitious, by mass</span></label>
+          <input autocomplete="off" type="number" id="admixdose" value="1.0" min="0" max="5" step="0.1">
+        </div>
+        <div class="field">
+          <label for="sgadmix">Sp. gravity of admixture</label>
+          <input autocomplete="off" type="number" id="sgadmix" value="1.145" min="0.8" max="1.5" step="0.001">
+        </div>
+        <div class="field" id="admixsolidswrap">
+          <label for="admixsolids">Admixture dry solids content <span class="unit">%, optional</span></label>
+          <input autocomplete="off" type="number" id="admixsolids" value="" min="0" max="100" step="any" placeholder="e.g., 40% solids">
+          <span class="step-note" style="margin:2px 0 0;">Optional. Blank = admixture water neglected in Step 8. If entered (above 0, below 100), the water it carries, admixture mass × (1 − solids/100), is deducted from the mixer water.</span>
+        </div>
+        <div id="admixsolids-badge" aria-live="polite"></div>
+      </div>
+
+      <div class="calc">
+        <div class="line"><span class="k">Base water content (Table 4, for size &amp; 50mm slump)</span><span class="v" id="c-basewater">—</span></div>
+        <div class="line"><span class="k">Slump correction (+3% per 25mm above 50mm, Cl. 5.3)</span><span class="v" id="c-slumpcorr">—</span></div>
+        <div class="line"><span class="k">Aggregate shape correction (Cl. 5.3)</span><span class="v" id="c-shapecorr">—</span></div>
+        <div class="line"><span class="k">Water content before admixture</span><span class="v" id="c-waterpread">—</span></div>
+        <div class="line"><span class="k">Reduction from admixture</span><span class="v" id="c-admixcorr">—</span></div>
+        <div class="line result"><span class="k">Final estimated water content</span><span class="v" id="c-water">—</span></div>
+      </div>
+      <div id="water-badge"></div>
+    </div>
+  </div>
+
+  <!-- STEP 5 -->
+  <div class="step" id="step5">
+    <div class="step-num">05</div>
+    <div class="step-body">
+      <div class="step-head"><h2>Cementitious material content</h2><span class="clause">Cl. 5.4</span></div>
+      <p class="step-note">Cement content follows from the water content and the free w/c ratio you selected in Step 3, checked against the IS 456 Table 5 durability minimum (20mm-aggregate basis). When fly ash / GGBS is used, Cl. 5.4.1 allows increasing the calculated cementitious content by 10% for the preliminary trial (as done in Annex B/C of the standard). The w/c you entered stays fixed as the design input; once SCM is added, the actual governing ratio becomes w/cm (water ÷ total cementitious mass) — identical to w/c when there's no SCM, lower than it once SCM is present.</p>
+
+      <div class="grid">
+        <div class="field">
+          <label for="cementminadj">Aggregate-size adjustment to min. cement content <span class="unit">kg/m³ — engineering assumption</span></label>
+          <input autocomplete="off" type="number" id="cementminadj" value="0" step="5">
+          <span class="step-note" style="margin:2px 0 0;">IS 456 Table 5's minimum cement figures are given on a 20mm-aggregate basis; IS 10262 does not itself tabulate a fixed correction for other sizes. This field defaults to 0 (no adjustment). Some design offices apply their own convention here — enter your project's value, or leave at 0 and rely on the Table 5 minimum directly.</span>
+        </div>
+        <div class="field">
+          <label for="scmtype">Supplementary cementitious material (SCM)</label>
+          <select autocomplete="off" id="scmtype">
+            <option value="none" selected>None</option>
+            <option value="flyash">Fly ash</option>
+            <option value="ggbs">GGBS (slag)</option>
+            <option value="silicafume">Silica fume</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="scmpct">SCM replacement — project/trial value <span class="unit">% of cementitious</span></label>
+          <input autocomplete="off" type="number" id="scmpct" value="0" min="0" max="50" step="1">
+          <span class="step-note" style="margin:2px 0 0;">This calculator does not determine the permissible SCM replacement percentage. Establish the percentage from the applicable material standard, project specification and trial mixes.</span>
+        </div>
+        <div class="field" id="scmboostwrap" style="display:none;">
+          <label class="checkfield" style="padding-top:22px;">
+            <input autocomplete="off" type="checkbox" id="scmboost">
+            <span>Apply 10% preliminary increase (Cl. 5.4.1)</span>
+          </label>
+        </div>
+        <div class="field">
+          <label for="maxcement">Maximum cement/cementitious content <span class="unit">kg/m³, project stipulation, Cl. 4.1(m)</span></label>
+          <input autocomplete="off" type="number" id="maxcement" value="450" min="0" step="10">
+          <span class="step-note" style="margin:2px 0 0;">This limit must come from IS 456:2000 (where applicable), the project specification, or engineer/project requirements — it is not derived by this calculator. When SCM is used, the adopted value is checked against the total cementitious content (OPC + SCM) shown below, not OPC alone. <strong>A valid positive value is required</strong> — if left blank or invalid, the design is flagged FAIL rather than silently assuming 450 kg/m³.</span>
+        </div>
+      </div>
+
+      <div class="calc">
+        <div class="line"><span class="k">Total cementitious content = water content ÷ selected w/c</span><span class="v" id="c-cementraw">—</span></div>
+        <div class="line"><span class="k">10% preliminary increase (if applied)</span><span class="v" id="c-cementboost">—</span></div>
+        <div class="line"><span class="k">Minimum cement content (durability, IS 456 Table 5, 20mm basis)</span><span class="v" id="c-cementmin-base">—</span></div>
+        <div class="line"><span class="k">Aggregate-size adjustment (engineering assumption, user-set)</span><span class="v" id="c-cementmin-adj">—</span></div>
+        <div class="line"><span class="k">Minimum cementitious content adopted for check</span><span class="v" id="c-cementmin">—</span></div>
+        <div class="line result"><span class="k">Cementitious content adopted</span><span class="v" id="c-cementadopt">—</span></div>
+        <div class="line"><span class="k">— of which SCM</span><span class="v" id="c-scmqty">—</span></div>
+        <div class="line"><span class="k">— of which OPC</span><span class="v" id="c-opcqty">—</span></div>
+        <div class="line"><span class="k">Water / total cementitious materials ratio (w/cm)</span><span class="v" id="c-wcm">—</span></div>
+      </div>
+      <div id="cement-badge"></div>
+    </div>
+  </div>
+
+  <!-- STEP 6 -->
+  <div class="step" id="step6">
+    <div class="step-num">06</div>
+    <div class="step-body">
+      <div class="step-head"><h2>Coarse &amp; fine aggregate proportion</h2><span class="clause">Cl. 5.5, Tbl. 5</span></div>
+      <p class="step-note">The coarse-aggregate volume fraction depends on nominal max. size and fine-aggregate zone, corrected for the actual w/c ratio (±0.01 per ±0.05 change from 0.50), then optionally reduced up to 10% for pumped concrete (Cl. 5.5.2).</p>
+
+      <p class="step-note" style="margin-top:0;"><strong>Application plausibility range: 0.30–0.85. This is not an IS 10262 prescribed limit.</strong> A calculated coarse-aggregate fraction outside this range is rejected and blocks the final mix; it is never clamped.</p>
+
+      <div class="reftable-wrap">
+      <table class="reftable" id="table5">
+        <caption>Table 5 — Volume of coarse aggregate per unit volume of total aggregate (for w/c = 0.50)</caption>
+        <thead><tr><th>Max. size, mm</th><th>Zone IV</th><th>Zone III</th><th>Zone II</th><th>Zone I</th></tr></thead>
+        <tbody>
+          <tr id="row-agg10"><td>10</td><td>0.54</td><td>0.52</td><td>0.50</td><td>0.48</td></tr>
+          <tr id="row-agg20"><td>20</td><td>0.66</td><td>0.64</td><td>0.62</td><td>0.60</td></tr>
+          <tr id="row-agg40"><td>40</td><td>0.73</td><td>0.72</td><td>0.71</td><td>0.69</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <div class="calc">
+        <div class="line"><span class="k">Base volume fraction of CA (Table 5)</span><span class="v" id="c-cabase">—</span></div>
+        <div class="line"><span class="k">Correction for effective w/cm (±0.01 per ±0.05 from 0.50)</span><span class="v" id="c-cawc">—</span></div>
+        <div class="line"><span class="k">Correction for pumping (up to −10%, if selected)</span><span class="v" id="c-capump">—</span></div>
+        <div class="line result"><span class="k">Volume fraction of coarse aggregate</span><span class="v" id="c-cafrac">—</span></div>
+        <div class="line"><span class="k">Volume fraction of fine aggregate</span><span class="v" id="c-fafrac">—</span></div>
+      </div>
+      <div id="zone-badge"></div>
+      <details class="adv" id="fracdetails" open style="margin-top:14px;">
+        <summary>Split coarse aggregate into two size fractions (Cl. 5.6 / IS 383 combined grading)</summary>
+        <div class="adv-body">
+          <p class="step-note">If you're combining two coarse-aggregate fractions (e.g. 20–10 mm and 10–4.75 mm) to meet IS 383's combined grading, enter the blend ratio used in your sieve analysis. This only splits the total coarse-aggregate mass calculated in Step 7 (the ratio is not derived for you); the same two masses are repeated under Coarse aggregate in the Final Mix table. As-batched fraction masses use the single coarse-aggregate moisture entered in Step 8.</p>
+          <div class="grid">
+            <div class="field">
+              <label for="fracRatio">Fraction I : Fraction II ratio <span class="unit">e.g. 60:40</span></label>
+              <input autocomplete="off" type="text" id="fracRatio" value="60:40">
+            </div>
+          </div>
+          <div class="calc">
+            <div class="line"><span class="k">Fraction I (larger size)</span><span class="v" id="c-fracI">—</span></div>
+            <div class="line"><span class="k">Fraction II (smaller size)</span><span class="v" id="c-fracII">—</span></div>
+          </div>
+          <div id="frac-badge"></div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- STEP 7 -->
+  <div class="step" id="step7">
+    <div class="step-num">07</div>
+    <div class="step-body">
+      <div class="step-head"><h2>Mix calculation — absolute volume method</h2><span class="clause">Cl. 5.7</span></div>
+      <p class="step-note">Every constituent's solid volume is subtracted from 1 m³ (net of entrapped air); the remainder splits into coarse and fine aggregate using the Step 6 fraction.</p>
+
+      <div class="grid">
+        <div class="field"><label for="sgcement">Sp. gravity of cement</label><input autocomplete="off" type="number" id="sgcement" value="3.15" step="0.01"></div>
+        <div class="field"><label for="sgscm">Sp. gravity of SCM</label><input autocomplete="off" type="number" id="sgscm" value="2.20" step="0.01"><span class="step-note" style="margin:2px 0 0;"><strong>Enter supplier/lab-specific SG; default value is only a starting input.</strong></span></div>
+        <div class="field"><label for="sgca">Sp. gravity of coarse aggregate</label><input autocomplete="off" type="number" id="sgca" value="2.74" step="0.01"></div>
+        <div class="field"><label for="sgfa">Sp. gravity of fine aggregate</label><input autocomplete="off" type="number" id="sgfa" value="2.65" step="0.01"></div>
+      </div>
+
+      <div class="calc">
+        <div class="line"><span class="k">a. Volume of concrete</span><span class="v">1.000 m³</span></div>
+        <div class="line"><span class="k">b. Volume of entrapped air</span><span class="v" id="c-vair">—</span></div>
+        <div class="line"><span class="k">c. Volume of cement</span><span class="v" id="c-vcement">—</span></div>
+        <div class="line"><span class="k">d. Volume of SCM</span><span class="v" id="c-vscm">—</span></div>
+        <div class="line"><span class="k">e. Volume of water</span><span class="v" id="c-vwater">—</span></div>
+        <div class="line"><span class="k">f. Volume of chemical admixture</span><span class="v" id="c-vadmix">—</span></div>
+        <div class="line result"><span class="k">g. Volume of all-in aggregate = 1 − (b+c+d+e+f)</span><span class="v" id="c-vagg">—</span></div>
+        <div class="line"><span class="k">h. Volume of coarse aggregate</span><span class="v" id="c-vca">—</span></div>
+        <div class="line"><span class="k">i. Volume of fine aggregate</span><span class="v" id="c-vfa">—</span></div>
+        <div class="line result"><span class="k">Mass of coarse aggregate</span><span class="v" id="c-mca">—</span></div>
+        <div class="line result"><span class="k">Mass of fine aggregate</span><span class="v" id="c-mfa">—</span></div>
+      </div>
+      <div id="sg-badge"></div>
+    </div>
+  </div>
+
+  <!-- STEP 8 -->
+  <div class="step" id="step8">
+    <div class="step-num">08</div>
+    <div class="step-body">
+      <div class="step-head"><h2>Site batch correction</h2><span class="clause">Illustrated in Annex A-11</span></div>
+      <p class="step-note">Design-stage quantities (Step 7) assume saturated-surface-dry (SSD) aggregate. Moisture correction converts those SSD design quantities into actual as-batched (wet) quantities, and adjusts the water added at the mixer for the moisture and absorption of the aggregate — via an oven-dry basis, consistent with Annex B/A-11 of the standard. Enter the <em>total</em> moisture content as measured on site (e.g. by a moisture meter or oven-dry test); absorption comes from laboratory data for the aggregate source.</p>
+      <p class="step-note"><strong>Admixture water is neglected unless you enter the admixture's dry solids content in Step 4.</strong> If entered, the water carried by the admixture, admixture mass × (1 − solids/100), is deducted from the mixer water below. If left blank, the admixture is assumed 100% solid (or its water is accounted for on site) and nothing is deducted.</p>
+      <details class="adv">
+        <summary>Apply moisture correction</summary>
+        <div class="adv-body">
+          <div class="grid">
+            <div class="field"><label for="moistca">Total moisture content — coarse aggregate <span class="unit">%</span></label><input autocomplete="off" type="number" id="moistca" value="0" step="0.1" min="0"></div>
+            <div class="field"><label for="absorbca">Absorption — coarse aggregate <span class="unit">%</span></label><input autocomplete="off" type="number" id="absorbca" value="0.5" step="0.1" min="0"></div>
+            <div class="field"><label for="moistfa">Total moisture content — fine aggregate <span class="unit">%</span></label><input autocomplete="off" type="number" id="moistfa" value="2" step="0.1" min="0"></div>
+            <div class="field"><label for="absorbfa">Absorption — fine aggregate <span class="unit">%</span></label><input autocomplete="off" type="number" id="absorbfa" value="1" step="0.1" min="0"></div>
+          </div>
+          <div class="calc">
+            <div class="line"><span class="k">Coarse aggregate condition</span><span class="v" id="c-ca-status">—</span></div>
+            <div class="line"><span class="k">Fine aggregate condition</span><span class="v" id="c-fa-status">—</span></div>
+            <div class="line"><span class="k">Oven-dry equivalent — coarse aggregate</span><span class="v" id="c-ca-od">—</span></div>
+            <div class="line"><span class="k">Oven-dry equivalent — fine aggregate</span><span class="v" id="c-fa-od">—</span></div>
+            <div class="line"><span class="k">As-batched (wet) mass of coarse aggregate</span><span class="v" id="c-mca-corr">—</span></div>
+            <div class="line"><span class="k">As-batched (wet) mass of fine aggregate</span><span class="v" id="c-mfa-corr">—</span></div>
+            <div class="line"><span class="k">Design water requirement (Step 4/5, before this correction)</span><span class="v" id="c-water-design">—</span></div>
+            <div class="line"><span class="k">Water contributed by liquid admixture</span><span class="v" id="c-water-admix">neglected (assumed 100% solid or accounted on site)</span></div>
+            <div class="line"><span class="k">Free/surface water contributed by CA + FA</span><span class="v" id="c-water-contrib">—</span></div>
+            <div class="line result"><span class="k">Net water to add at mixer</span><span class="v" id="c-water-corr">—</span></div>
+          </div>
+          <div id="moisture-badge"></div>
+          <div id="moisture-warn-badge"></div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- SUMMARY / REPORT -->
+  <div class="report" id="finalmix" aria-live="polite">
+    <div class="report-head">
+      <div class="report-eyebrow" id="report-eyebrow">Final Mix Design</div>
+      <h2>Mix proportions — per m³</h2>
+      <div class="report-grade">Concrete grade: <strong id="rs-grade">M25</strong> &nbsp; <span class="badge pass" id="yield-badge">yield check</span></div>
+      <div style="margin-top:6px;"><span class="badge" id="design-status">—</span></div>
+      <div class="report-prepared">Prepared by: Himanshu Meena | Group: 3</div>
+    </div>
+    <div class="ratio-line" id="ratio-line">1 : — : —</div>
+    <div class="ratio-sub" id="ratio-sub">cement : fine aggregate : coarse aggregate, by mass — free w/c —</div>
+
+    <div class="report-stats">
+      <div class="stat"><span class="stat-label" id="rs-wc-label">Free w/c ratio</span><span class="stat-val" id="rs-wc">—</span></div>
+      <div class="stat"><span class="stat-label">Total cementitious</span><span class="stat-val" id="rs-cementitious">—</span></div>
+      <div class="stat"><span class="stat-label">Yield / volume check</span><span class="stat-val" id="rs-yield">—</span></div>
+    </div>
+
+    <div class="reftable-wrap" style="margin:0;">
+    <table class="qty">
+      <thead><tr><th style="text-align:left;">Material</th><th>Design qty / m³<br><small>(aggregate SSD)</small></th><th>As-batched / m³<br><small>(site moisture-corrected)</small></th><th>Per 50 kg bag<br><small>(SSD basis)</small></th></tr></thead>
+      <tbody id="qty-body"></tbody>
+    </table>
+    </div>
+    <p class="step-note" style="margin:8px 20px 0;">Design quantities assume saturated-surface-dry (SSD) aggregate. Use the as-batched column for site batching: it applies the moisture/absorption values from Step 8 (aggregate mass includes its moisture; mixing water is reduced or increased accordingly).</p>
+
+    <div class="assump">
+      <h3>Design Assumptions &amp; Inputs</h3>
+      <div class="assump-grid" id="assump-body"></div>
+    </div>
+
+    <div class="design-checks">
+      <h3>Design Checks</h3>
+      <div id="design-checks-body"></div>
+    </div>
+
+    <div class="vl-box" id="vl-box">
+      <h3>Verification &amp; Limitations</h3>
+      <ul>
+        <li>Mix proportions are calculated using the implemented IS 10262:2019 methodology and the selected design inputs.</li>
+        <li>Durability requirements are checked against the implemented IS 456:2000 limits.</li>
+        <li>The adopted w/c ratio should be confirmed using the applicable IS 10262 guidance / Fig. 1 and trial data.</li>
+        <li>Manufactured/crushed sand does not receive an invented universal automatic correction.</li>
+        <li>Moisture correction depends on the entered aggregate moisture and absorption values.</li>
+        <li>Trial mixes and laboratory validation are required before field implementation.</li>
+        <li>Final engineering approval remains the responsibility of the qualified designer/engineer.</li>
+      </ul>
+      <p class="vl-status" id="vl-annex">Annex A comparison: —</p>
+      <p class="vl-status" id="vl-tests">Built-in test cases: not run in this session.</p>
+    </div>
+
+    <div class="grid no-print" style="padding:8px 22px 0;">
+      <div class="field">
+        <label for="projname">Project / structure name <span class="unit">optional — used in the copied batch sheet</span></label>
+        <input autocomplete="off" type="text" id="projname" value="" placeholder="e.g., Block B raft foundation">
+      </div>
+    </div>
+    <div class="btnrow no-print">
+      <button class="act" onclick="window.print()">Print / save report</button>
+      <button class="act ghost" type="button" id="exportBtn">Copy batch proportions (plain text)</button>
+      <button class="act ghost" onclick="resetDefaults()">Reset to defaults</button>
+    </div>
+    <div id="export-msg" class="no-print" style="padding:0 22px 8px;" aria-live="polite"></div>
+    <textarea id="export-text" class="no-print" readonly rows="14" aria-label="Batch proportions, plain text" style="display:none;margin:0 22px 12px;width:calc(100% - 44px);font-family:var(--mono);font-size:12px;"></textarea>
+
+    <p class="disclaimer">This sheet establishes trial-mix-1 proportions to IS 10262:2019, Cl. 5. Per Cl. 5.8, these must be confirmed by casting at least three/four trial mixes (this w/c and roughly ±10%), checking fresh-concrete workability and segregation, and testing hardened-cube strength before the design is accepted for production. It is a design aid, not a substitute for laboratory verification, a qualified engineer's approval, or compliance checks under IS 456:2000.</p>
+  </div>
+
+  <!-- TRIAL MIX ADJUSTMENT (Cl. 5.8) - advisory only -->
+  <div class="step no-print" id="trialmix">
+    <div class="step-num">T</div>
+    <div class="step-body">
+      <div class="step-head"><h2>Trial mix adjustment</h2><span class="clause">Cl. 5.8 — advisory only</span></div>
+      <p class="step-note"><strong>Advisory only.</strong> Enter the results of the trial mix cast from the proportions above. This block suggests what to review; it never changes any input or the design. Leave a field blank if you have not measured it.</p>
+      <div class="grid">
+        <div class="field">
+          <label for="trslump">Measured slump of trial mix <span class="unit">mm</span></label>
+          <input autocomplete="off" type="number" id="trslump" value="" min="0" step="5" placeholder="measured">
+        </div>
+        <div class="field">
+          <label for="trair">Measured air content <span class="unit">%</span></label>
+          <input autocomplete="off" type="number" id="trair" value="" min="0" step="0.1" placeholder="measured">
+        </div>
+        <div class="field">
+          <label for="trstrength">28-day compressive strength of trial <span class="unit">N/mm²</span></label>
+          <input autocomplete="off" type="number" id="trstrength" value="" min="0" step="0.1" placeholder="measured">
+        </div>
+        <div class="field">
+          <label for="trslumptol">Accepted slump deviation <span class="unit">± mm, optional</span></label>
+          <input autocomplete="off" type="number" id="trslumptol" value="" min="0" step="5" placeholder="your tolerance">
+        </div>
+        <div class="field">
+          <label for="trairtol">Accepted air deviation <span class="unit">± %, optional</span></label>
+          <input autocomplete="off" type="number" id="trairtol" value="" min="0" step="0.1" placeholder="your tolerance">
+        </div>
+      </div>
+      <div class="design-checks" style="margin-top:10px;"><div id="trial-advice"></div></div>
+    </div>
+  </div>
+
+  <!-- MANUAL ANNEX A VERIFICATION (collapsed, hidden in print) -->
+  <details class="adv no-print" id="validation" style="margin-top:16px;">
+    <summary>Manual Annex A Verification — compare with your copy of IS 10262:2019 Annex A</summary>
+    <div class="adv-body">
+      <p class="step-note">Enter the inputs and reference results from your copy of IS 10262:2019 Annex A to verify this calculator. No standard values are embedded without source verification.</p>
+      <p class="step-note" style="margin-top:-8px;">How to use: (1) press the button below, (2) enter the Annex A inputs in Steps 1–8 above, (3) type the Annex A printed results into the Reference column. Until reference values are entered nothing is compared and nothing is reported as verified.</p>
+      <div class="btnrow" style="padding:6px 0 10px;">
+        <button type="button" class="act" id="annexLoad">Enter Annex A Reference Values</button>
+        <button type="button" class="act ghost" id="annexExample1">Load Annex A Example 1 Stipulations (IS 10262:2019)</button>
+        <button type="button" class="act ghost" id="annexRestore" disabled>Restore my previous inputs</button>
+      </div>
+      <div id="annex-msg"></div>
+      <div class="grid" style="margin-top:8px;">
+        <div class="field">
+          <label for="valtol">Comparison tolerance <span class="unit">± % of reference — your choice</span></label>
+          <input autocomplete="off" type="number" id="valtol" value="1" min="0" step="0.1">
+        </div>
+      </div>
+      <div class="reftable-wrap">
+      <table class="reftable">
+        <thead><tr><th style="text-align:left;">Parameter</th><th>Calculator</th><th>Reference</th><th>Difference</th><th>Status</th></tr></thead>
+        <tbody id="val-body"></tbody>
+      </table>
+      </div>
+      <p class="step-note" style="margin:6px 0 0;">Status key: ✓ Match (within tolerance) · ✕ Mismatch · — Not available (no reference entered, or the calculator result is unavailable) · ⚠ Review (invalid reference or tolerance).</p>
+      <div id="val-summary"></div>
+    </div>
+  </details>
+
+  <!-- CALCULATOR TEST CASE VERIFICATION (runs the real recalc() on preset inputs; hidden in print) -->
+  <details class="adv no-print" id="testpanel" style="margin-top:16px;">
+    <summary>Calculator Test Case Verification — run the calculator on five representative cases</summary>
+    <div class="adv-body">
+      <p class="step-note" id="test-disclaimer">Diagnostic smoke tests using the calculator's actual recalculation functions. These tests check calculator behavior and do not independently verify the IS 10262 equations.</p>
+      <p class="step-note">Each case loads preset inputs into the live calculator, runs the same <code>recalc()</code> that the page uses, and reads back its own design checks. No separate calculation engine and no expected numbers are involved: the panel shows what the calculator reports. Your current inputs are saved before the run and restored afterwards.</p>
+      <div class="btnrow" style="padding:6px 0 10px;">
+        <button type="button" class="act" id="testRun">Run test cases</button>
+      </div>
+      <div id="test-results"></div>
+    </div>
+  </details>
+
+  <footer>IS 10262:2019 Mix Design Calculator — Section 2 (Ordinary &amp; Standard Grades)</footer>
+</div>
+
+<script>
+(function(){
+"use strict";
+function $(id){ return document.getElementById(id); }
+
+// ---- Error context: which step / input was being processed when something threw ----
+var ctx = {step:'page initialisation', field:'', trigger:''};
+function setStep(name){ ctx.step = name; }
+function fieldLabel(id){
+  var l = document.querySelector('label[for="'+id+'"]');
+  return l ? l.textContent.replace(/\s+/g,' ').trim() : '';
+}
+function describeField(id){ var t = fieldLabel(id); return '#'+id + (t ? ' ("'+t+'")' : ''); }
+// val()/num() read an input AND record which one, so a failure can name it.
+function val(id){
+  ctx.field = id;
+  var e = document.getElementById(id);
+  if(!e) throw new Error('input #'+id+' does not exist in the page (was the HTML edited?)');
+  return e.value;
+}
+function num(id){ return parseFloat(val(id)); }
+function hideError(){ var b = document.getElementById('err-banner'); if(b){ b.style.display='none'; b.textContent=''; } }
+function showError(err){
+  var b = document.getElementById('err-banner');
+  if(!b) return;
+  var msg = (err && err.message) ? err.message : String(err);
+  var parts = ['Calculator error in ' + ctx.step + '.'];
+  if(ctx.field)   parts.push('Last input read: ' + describeField(ctx.field) + '.');
+  if(ctx.trigger && ctx.trigger !== ctx.field) parts.push('Recalculation was triggered by editing: ' + describeField(ctx.trigger) + '.');
+  parts.push('Detail: ' + msg + '.');
+  parts.push('Correct that input, or reload the page if the HTML was modified.');
+  b.style.display='block';
+  b.textContent = parts.join(' ');
+}
+window.addEventListener('error', function(ev){ showError(ev.error || ev.message); });
+
+var gradeStrength = {M10:10,M15:15,M20:20,M25:25,M30:30,M35:35,M40:40,M45:45,M50:50,M55:55,M60:60};
+var gradeMinExposure = {mild:'M20',moderate:'M25',severe:'M30',verysevere:'M35',extreme:'M40'};
+var gradeOrder = ['M10','M15','M20','M25','M30','M35','M40','M45','M50','M55','M60'];
+
+var durability = {
+  mild:      {wc:0.55, cement:300, rowId:'row-mild'},
+  moderate:  {wc:0.50, cement:300, rowId:'row-moderate'},
+  severe:    {wc:0.45, cement:320, rowId:'row-severe'},
+  verysevere:{wc:0.45, cement:340, rowId:'row-verysevere'},
+  extreme:   {wc:0.40, cement:360, rowId:'row-extreme'}
+};
+
+var table34 = {10:{air:1.5,water:208},20:{air:1.0,water:186},40:{air:0.8,water:165}};
+
+// ---------------------------------------------------------------------------
+// IS 10262:2019 Table 5 - VALUES USED BY THIS FILE (unchanged) - VERIFY against your copy
+//   Volume of coarse aggregate per unit volume of total aggregate, for w/c = 0.50,
+//   aggregates in saturated surface dry condition, crushed (angular) coarse aggregate.
+//
+//   Nominal max size | Zone IV | Zone III | Zone II | Zone I
+//   -----------------+---------+----------+---------+-------
+//        10 mm       |  0.54   |  0.52    |  0.50   |  0.48
+//        20 mm       |  0.66   |  0.64    |  0.62   |  0.60
+//        40 mm       |  0.73   |  0.72    |  0.71   |  0.69
+//
+//   The HTML table with id "table5" (Step 6) repeats these numbers for display only;
+//   the object below is what the arithmetic uses. If you send a correction, BOTH must change.
+//   Correction applied in Step 6: +/-0.01 per -/+0.05 change of w/c from 0.50.
+// ---------------------------------------------------------------------------
+// IS 10262:2019 Table 5 — order in the standard is Zone IV, III, II, I
+var table5 = {
+  10:{IV:0.54,III:0.52,II:0.50,I:0.48},
+  20:{IV:0.66,III:0.64,II:0.62,I:0.60},
+  40:{IV:0.73,III:0.72,II:0.71,I:0.69}
+};
+
+var scmSG = {none:0, flyash:2.20, ggbs:3.00, silicafume:2.20};
+
+// ---- Ranges used for validation. Not values taken from IS 10262 / IS 456 unless stated ----
+// w/c: same limits as the min/max attributes of the #wc field (applied to the field in init below).
+var WC_MIN = 0.20, WC_MAX = 0.70;
+// Coarse-aggregate volume fraction APPLICATION PLAUSIBILITY RANGE. INHERITED from the earlier version of this
+// file; it is NOT an IS 10262 prescribed limit. Outside it the design FAILS (no clamping). Confirm or change.
+var CA_FRAC_MIN = 0.30, CA_FRAC_MAX = 0.85;
+// Neutral value used ONLY to keep arithmetic finite when a specific-gravity field is invalid.
+// Every output that depends on it is shown as a dash and the design is blocked.
+var SG_PLACEHOLDER = 1;
+// Fraction split ratio "a:b" - two non-negative numbers separated by a colon.
+var FRAC_RATIO_RE = /^\s*(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)\s*$/;
+
+// ===========================================================================
+// MANUAL ANNEX A VERIFICATION: no Annex A inputs or results are embedded in this file (no verified source was
+// supplied). The user enters the Annex A inputs in Steps 1-8 and the printed results in the Reference column.
+// ===========================================================================
+var VAL_ROWS = [
+  {key:'ftarget',      label:"Target mean strength f'ck", unit:'N/mm\u00b2', dec:2},
+  {key:'wcm',          label:'Free w/c (w/cm) ratio',      unit:'',            dec:3},
+  {key:'water',        label:'Water content',              unit:'kg/m\u00b3',  dec:1},
+  {key:'cementitious', label:'Cementitious content',       unit:'kg/m\u00b3',  dec:1},
+  {key:'opc',          label:'Cement (OPC)',               unit:'kg/m\u00b3',  dec:1},
+  {key:'scm',          label:'SCM',                        unit:'kg/m\u00b3',  dec:1},
+  {key:'caFrac',       label:'Coarse-aggregate volume fraction', unit:'',       dec:3},
+  {key:'mFa',          label:'Fine aggregate (SSD)',       unit:'kg/m\u00b3',  dec:1},
+  {key:'mCa',          label:'Coarse aggregate (SSD)',     unit:'kg/m\u00b3',  dec:1},
+  {key:'admix',        label:'Admixture',                  unit:'kg/m\u00b3',  dec:2}
+];
+var validationOut = null;   // filled by recalc(), read by updateValidation()
+var preAnnexState = null;   // snapshot of the user's inputs taken when 'Enter Annex A Reference Values' is pressed
+var annexStatusText = 'Annex A comparison: not performed \u2014 no reference values entered, so the calculator is NOT verified against Annex A.';
+var testStatusText = 'Built-in test cases: not run in this session.';
+var testsRunning = false;
+
+function fmt(n,d){
+  if(d===undefined) d=1;
+  if(!isFinite(n)) return '—';
+  return n.toLocaleString('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d});
+}
+function setBadge(el, level, text){ el.innerHTML = '<span class="badge '+level+'">'+text+'</span>'; }
+function addBadge(el, level, text){ el.innerHTML += '<span class="badge '+level+'">'+text+'</span>'; }
+function setText(id, txt){ var e=$(id); if(e) e.textContent = txt; else console.warn('missing element', id); }
+
+// ---- Trial mix adjustment (Cl. 5.8): ADVISORY ONLY. Reads trial results, never changes any design input ----
+function checkRowHtml(state, label, text){
+  var icon = state==='pass' ? '\u2713' : (state==='warn' ? '\u26a0' : (state==='info' ? 'i' : '\u2715'));
+  return '<div class="checkrow '+state+'"><span class="checkicon">'+icon+'</span><span class="checklabel">'+label+'</span><span class="checknote">'+text+'</span></div>';
+}
+function updateTrial(d){
+  var invalid = [];
+  function rd(id, label, ok){
+    var raw = val(id).trim();
+    if(raw === '') return {blank:true};
+    var v = parseFloat(raw);
+    if(!isFinite(v) || !ok(v)){ invalid.push(label); return {bad:true}; }
+    return {v:v};
+  }
+  var ms = rd('trslump',    'measured slump',      function(v){ return v >= 0; });
+  var ma = rd('trair',      'measured air',        function(v){ return v >= 0 && v < 100; });
+  var mf = rd('trstrength', '28-day strength',     function(v){ return v > 0; });
+  var ts = rd('trslumptol', 'slump deviation',     function(v){ return v >= 0; });
+  var ta = rd('trairtol',   'air deviation',       function(v){ return v >= 0; });
+  var rows = [], review = [];
+
+  if(ms.v !== undefined){
+    if(d.slump === null){
+      rows.push(checkRowHtml('info','Slump','the design slump in Step 1 is invalid, so there is nothing to compare with'));
+    } else {
+      var tolS = ts.v !== undefined ? ts.v : 0;
+      var tolSTxt = ts.v !== undefined ? ' (accepted \u00b1'+fmt(ts.v,0)+' mm)' : ' (no deviation entered \u2014 any difference is reported)';
+      var dS = ms.v - d.slump;
+      if(Math.abs(dS) <= tolS + 1e-9){
+        rows.push(checkRowHtml('pass','Slump','measured '+fmt(ms.v,0)+' mm vs design '+fmt(d.slump,0)+' mm \u2014 acceptable'+tolSTxt));
+      } else if(dS < 0){
+        rows.push(checkRowHtml('warn','Slump','measured '+fmt(ms.v,0)+' mm is '+fmt(-dS,0)+' mm BELOW the design '+fmt(d.slump,0)+' mm'+tolSTxt+'. Workability is short. Consider a higher admixture dosage or water reduction (Step 4) or a higher water content with cement raised in proportion so the w/c ratio stays unchanged. Adding water alone raises the w/c ratio.'));
+        review.push('water / admixture');
+      } else {
+        rows.push(checkRowHtml('warn','Slump','measured '+fmt(ms.v,0)+' mm is '+fmt(dS,0)+' mm ABOVE the design '+fmt(d.slump,0)+' mm'+tolSTxt+'. Check for segregation or bleeding. Consider a lower admixture dosage or water content (Step 4); if water falls with the w/c ratio held, cement falls too \u2014 recheck the durability minimum in Step 5.'));
+        review.push('water / admixture');
+      }
+    }
+  }
+  if(ma.v !== undefined){
+    if(d.air === null){
+      rows.push(checkRowHtml('info','Air','the entrapped-air input in Step 4 is invalid, so there is nothing to compare with'));
+    } else {
+      var tolA = ta.v !== undefined ? ta.v : 0;
+      var tolATxt = ta.v !== undefined ? ' (accepted \u00b1'+fmt(ta.v,1)+' %)' : ' (no deviation entered \u2014 any difference is reported)';
+      var dA = ma.v - d.air;
+      if(Math.abs(dA) <= tolA + 1e-9){
+        rows.push(checkRowHtml('pass','Air','measured '+fmt(ma.v,1)+' % vs assumed '+fmt(d.air,1)+' % \u2014 acceptable'+tolATxt));
+      } else {
+        rows.push(checkRowHtml('warn','Air','measured '+fmt(ma.v,1)+' % is '+(dA>0?'ABOVE':'BELOW')+' the '+fmt(d.air,1)+' % assumed'+tolATxt+'. The absolute-volume balance (Step 7) used the assumed value. Enter the measured value under "Use measured entrapped air" in Step 4 and re-run; if air is unexpectedly high, review the admixture type and dosage.'));
+        review.push('entrapped-air assumption / admixture');
+      }
+    }
+  }
+  if(mf.v !== undefined){
+    if(d.ftarget === null){
+      rows.push(checkRowHtml('info','Strength','the target mean strength in Step 2 is invalid, so there is nothing to compare with'));
+    } else if(mf.v < d.ftarget){
+      rows.push(checkRowHtml('warn','Strength','28-day trial strength '+fmt(mf.v,2)+' N/mm\u00b2 is BELOW the target mean strength '+fmt(d.ftarget,2)+' N/mm\u00b2 (Step 2). Consider a lower w/c ratio (Step 3); that raises the cementitious content, so recheck the maximum in Step 5. A single result is not the acceptance basis \u2014 Cl. 5.8 calls for further trial mixes.'));
+      review.push('w/c ratio');
+    } else {
+      rows.push(checkRowHtml('pass','Strength','28-day trial strength '+fmt(mf.v,2)+' N/mm\u00b2 meets or exceeds the target mean strength '+fmt(d.ftarget,2)+' N/mm\u00b2. Any saving from a higher w/c must stay within the IS 456 durability limit (Step 3) and be confirmed by further trials (Cl. 5.8).'));
+    }
+  }
+  if(invalid.length){
+    rows.unshift(checkRowHtml('fail','Invalid entry', invalid.join(', ')+' \u2014 enter a valid number (or clear the field). Nothing was corrected for you.'));
+  }
+  if(ms.v === undefined && ma.v === undefined && mf.v === undefined && !invalid.length){
+    rows.push(checkRowHtml('info','Trial results','enter the measured slump, air and/or 28-day strength of your trial mix to get guidance'));
+  } else if(review.length){
+    rows.push(checkRowHtml('info','Items to review', review.filter(function(x,i,a){ return a.indexOf(x)===i; }).join('; ')+'. Change one input at a time in the steps above and re-run; nothing has been changed automatically.'));
+  }
+  $('trial-advice').innerHTML = rows.join('');
+  return {invalid: invalid.join(', ')};
+}
+
+// ---- Manual Annex A verification: calculator result vs. reference values typed in by the user ----
+function buildValidationTable(){
+  var html = VAL_ROWS.map(function(r){
+    return '<tr><td>'+r.label+(r.unit ? ' <span class="unit">'+r.unit+'</span>' : '')+'</td>'
+      + '<td id="vc-'+r.key+'">\u2014</td>'
+      + '<td><input autocomplete="off" type="number" step="any" id="exp-'+r.key+'" placeholder="enter reference" aria-label="Reference value for '+r.label+'" style="width:120px;" value=""></td>'
+      + '<td id="vd-'+r.key+'">\u2014</td>'
+      + '<td id="vr-'+r.key+'">\u2014</td></tr>';
+  }).join('');
+  $('val-body').innerHTML = html;
+}
+function updateValidation(out){
+  validationOut = out;
+  var tolRaw = parseFloat(val('valtol'));
+  var tolOk = isFinite(tolRaw) && tolRaw >= 0;
+  var nEntered = 0, nCompared = 0, nMatch = 0, nMiss = 0, nReview = 0, nUnavail = 0;
+  VAL_ROWS.forEach(function(r){
+    var calc = out[r.key];
+    var calcOk = (calc !== null && calc !== undefined && isFinite(calc));
+    setText('vc-'+r.key, calcOk ? fmt(calc, r.dec) : '\u2014');
+    var expStr = val('exp-'+r.key).trim();
+    var res = $('vr-'+r.key), dif = $('vd-'+r.key);
+    res.className = 'val-na'; dif.textContent = '\u2014';
+    if(expStr === ''){ res.textContent = '\u2014 Not available (no reference)'; nUnavail++; return; }
+    nEntered++;
+    var exp = parseFloat(expStr);
+    if(!isFinite(exp)){ res.className = 'val-review'; res.textContent = '\u26a0 Review (reference invalid)'; nReview++; return; }
+    if(!calcOk){ res.textContent = '\u2014 Not available (calculator result unavailable)'; nUnavail++; return; }
+    if(!tolOk){ res.className = 'val-review'; res.textContent = '\u26a0 Review (set a valid tolerance)'; nReview++; return; }
+    nCompared++;
+    var diff = calc - exp;
+    var rel = exp !== 0 ? Math.abs(diff)/Math.abs(exp)*100 : null;
+    dif.textContent = (diff>=0?'+':'') + fmt(diff, r.dec + 1) + (rel===null ? '' : '  ('+fmt(rel,2)+' %)');
+    var ok = exp !== 0 ? (rel <= tolRaw + 1e-9) : (Math.abs(diff) <= 1e-9);
+    if(ok){ nMatch++; res.className = 'val-match'; res.textContent = '\u2713 Match'; }
+    else  { nMiss++;  res.className = 'val-miss';  res.textContent = '\u2715 Mismatch'; }
+  });
+  var total = VAL_ROWS.length;
+  var sum = $('val-summary');
+  var tolTxt = tolOk ? fmt(tolRaw,2) : '?';
+  if(!tolOk){
+    setBadge(sum,'warn','\u26a0 Review: the comparison tolerance must be a number \u2265 0.');
+    annexStatusText = 'Annex A comparison: cannot be evaluated \u2014 the tolerance is invalid.';
+  } else if(nEntered === 0){
+    setBadge(sum,'info','NOT VERIFIED \u2014 no reference values entered. Nothing has been compared with Annex A.');
+    annexStatusText = 'Annex A comparison: not performed \u2014 no reference values entered, so the calculator is NOT verified against Annex A.';
+  } else if(nCompared === 0){
+    setBadge(sum,'warn','NOT VERIFIED \u2014 '+nEntered+' reference value(s) entered, but none could be compared (invalid reference or calculator result unavailable).');
+    annexStatusText = 'Annex A comparison: not performed \u2014 '+nEntered+' reference value(s) entered but none could be compared.';
+  } else if(nMiss > 0 || nReview > 0){
+    setBadge(sum,'fail','MISMATCH / REVIEW \u2014 '+nMatch+' of '+nCompared+' compared rows match within \u00b1'+tolTxt+' %'+(nReview?'; '+nReview+' row(s) need review':'')+'. Compared '+nCompared+' of '+total+' parameters.');
+    annexStatusText = 'Annex A comparison: '+nMatch+' of '+nCompared+' compared rows match within \u00b1'+tolTxt+' % ('+nMiss+' mismatch'+(nReview?', '+nReview+' need review':'')+'); compared '+nCompared+' of '+total+' parameters.';
+  } else if(nCompared < total){
+    setBadge(sum,'warn','PARTIAL \u2014 all '+nCompared+' compared rows match within \u00b1'+tolTxt+' %, but only '+nCompared+' of '+total+' parameters have a reference value. The calculator is not fully compared with Annex A.');
+    annexStatusText = 'Annex A comparison: partial \u2014 '+nCompared+' of '+total+' parameters compared, all within \u00b1'+tolTxt+' %.';
+  } else {
+    setBadge(sum,'pass','All '+total+' parameters match the entered reference values within \u00b1'+tolTxt+' % (as typed by the user from their copy of Annex A).');
+    annexStatusText = 'Annex A comparison: all '+total+' parameters match the user-entered reference values within \u00b1'+tolTxt+' %.';
+  }
+}
+// Snapshot/restore cover the design inputs only: the Reference column and tolerance are left alone.
+function isDesignInput(el){ return !(el.id && (el.id.indexOf('exp-') === 0 || el.id === 'valtol')); }
+function annexEnter(){
+  var msg = $('annex-msg');
+  var det = $('validation');
+  var firstTime = !preAnnexState;
+  if(firstTime){
+    preAnnexState = [];
+    document.querySelectorAll('input, select').forEach(function(el){
+      if(isDesignInput(el)) preAnnexState.push({el:el, value:el.value, checked:el.checked});
+    });
+    $('annexRestore').disabled = false;
+  }
+  if(det) det.open = true;
+  var target = null, all = document.querySelectorAll('#val-body input');
+  for(var i=0;i<all.length;i++){ if(all[i].value.trim()===''){ target = all[i]; break; } }
+  if(!target && all.length) target = all[0];
+  if(target){
+    if(typeof target.scrollIntoView === 'function') target.scrollIntoView({behavior:'smooth', block:'center'});
+    target.focus();
+  }
+  setBadge(msg,'info', (firstTime ? 'Your current inputs were saved. ' : 'Your earlier inputs are still saved. ') + 'Enter the Annex A inputs in Steps 1\u20138, then type the Annex A printed results into the Reference column. Use \u201cRestore my previous inputs\u201d to go back.');
+}
+function restoreInputs(){
+  var msg = $('annex-msg');
+  if(!preAnnexState){ setBadge(msg,'info','Nothing to restore \u2014 no inputs have been saved yet.'); $('annexRestore').disabled = true; return; }
+  preAnnexState.forEach(function(d){
+    if(d.el.type==='checkbox' || d.el.type==='radio') d.el.checked = d.checked; else d.el.value = d.value;
+  });
+  preAnnexState = null;
+  $('annexRestore').disabled = true;
+  recalc();
+  setBadge(msg,'pass','Your previous inputs were restored. The Reference column was left as typed.');
+}
+
+
+// ---- One-click batch proportions export (plain text). Reads lastExport, which recalc() sets only for a valid final mix ----
+function exportBatch(){
+  var msg = $('export-msg'), box = $('export-text');
+  box.style.display = 'none';
+  if(!lastExport){
+    msg.setAttribute('role','alert');
+    setBadge(msg,'fail','Nothing to export \u2014 the design is invalid or incomplete. Resolve the failed checks; the batch sheet is generated only for a valid final mix.');
+    return;
+  }
+  var d = lastExport;
+  function pad(t,n){ t = String(t); while(t.length < n) t += ' '; return t; }
+  function lpad(t,n){ t = String(t); while(t.length < n) t = ' ' + t; return t; }
+  var prep = (document.querySelector('.report-prepared') || {}).textContent || '';
+  var proj = val('projname').trim();
+  var status = ($('design-status') || {}).textContent || '';
+  var L = [];
+  L.push('IS 10262:2019 / IS 456:2000 \u2014 TRIAL MIX 1 BATCH PROPORTIONS');
+  L.push('Project: ' + (proj || '(not entered)'));
+  L.push(prep.replace(/\s+/g,' ').trim());
+  L.push('Date: ' + new Date().toLocaleDateString('en-GB'));
+  L.push('');
+  L.push('Concrete grade: ' + d.grade);
+  L.push('Exposure condition: ' + d.exposure);
+  L.push('Cement type: ' + d.cement);
+  L.push('Adopted free ' + d.ratioLabel + ' ratio: ' + d.wcm.toFixed(2));
+  L.push('Mix ratio (1 : FA : CA, by mass): ' + d.ratio);
+  L.push('Design status: ' + status);
+  L.push('');
+  L.push('SSD QUANTITIES PER m3 (aggregate saturated-surface-dry)');
+  d.rows.forEach(function(r){ L.push('  ' + pad(r[0].replace('\u21b3 ','- '),30) + lpad(r[1].toFixed(1),9) + ' ' + r[2]); });
+  L.push('');
+  L.push('AS-BATCHED (MOISTURE-CORRECTED) QUANTITIES');
+  L.push('  ' + pad('Material',30) + lpad('per m3',10) + lpad('per 50 kg bag',16));
+  d.rows.forEach(function(r){
+    L.push('  ' + pad(r[0].replace('\u21b3 ','- '),30) + lpad(r[4].toFixed(1) + ' kg',10) + lpad((r[4]*d.perBag).toFixed(2) + ' kg',16));
+  });
+  L.push('');
+  L.push('Water (as-batched) is the net mixer water after aggregate moisture' + ' and any admixture water entered in Step 4/8.');
+  L.push('Per-bag figures are per 50 kg of cement (OPC). Trial mixes are required before use (Cl. 5.8).');
+  var text = L.join('\n');
+  function done(ok){
+    if(ok){ msg.setAttribute('role','status'); setBadge(msg,'pass','Batch proportions copied to the clipboard as plain text.'); }
+    else {
+      msg.setAttribute('role','alert');
+      setBadge(msg,'warn','Automatic copy was blocked by the browser. The text is shown below \u2014 select it and copy manually.');
+      box.value = text; box.style.display = 'block'; box.focus(); box.select();
+    }
+  }
+  function fallback(){
+    var ok = false, ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly',''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try{ ok = document.execCommand('copy'); }catch(e){ ok = false; }
+    document.body.removeChild(ta); done(ok);
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){ done(true); }, fallback);
+  } else fallback();
+}
+
+// ---- Annex A Example 1 helper (advisory; snapshot-protected, so "Restore my previous inputs" undoes it) ----
+// Source: IS 10262:2019 Annex A (M40, PPC). Inputs A-1/A-2; printed results A-3, A-5..A-10 (rounded by the standard).
+// SCM is left blank in the Reference column: Annex A Example 1 prints no SCM value.
+var ANNEX_EX1_INPUTS = {grade:'M40', exposure:'severe', cementtype:'PPC (Fly ash based)', maxsize:'20', aggshape:'0', fazone:'II',
+  manufacturedsand:false, slump:'75', placing:'Manual / chute \u2014 normal', sitecontrol:'good', wc:'0.36',
+  admixtype:'superplasticizer', admixreduction:'23', admixdose:'1', admixsolids:'', sgcement:'2.88', sgca:'2.74', sgfa:'2.65', sgadmix:'1.145',
+  scmtype:'none', scmpct:'0', scmboost:false, maxcement:'450', moistca:'0', absorbca:'0.5', moistfa:'0', absorbfa:'1', fracRatio:'60:40'};
+var ANNEX_EX1_REFS = {ftarget:'48.25', wcm:'0.36', water:'148', cementitious:'412', opc:'412', caFrac:'0.648', mFa:'648', mCa:'1234', admix:'4.12'};
+function annexLoadExample1(){
+  var msg = $('annex-msg'), det = $('validation');
+  var firstTime = !preAnnexState;
+  if(firstTime){
+    preAnnexState = [];
+    document.querySelectorAll('input, select').forEach(function(el){
+      if(isDesignInput(el)) preAnnexState.push({el:el, value:el.value, checked:el.checked});
+    });
+    $('annexRestore').disabled = false;
+  }
+  defaultState.forEach(function(d){
+    if(!isDesignInput(d.el) || d.el.id === 'projname') return;
+    if(d.el.type==='checkbox' || d.el.type==='radio') d.el.checked = d.checked; else d.el.value = d.value;
+  });
+  var rejected = [];
+  Object.keys(ANNEX_EX1_INPUTS).forEach(function(k){ var e = setQuiet(k, ANNEX_EX1_INPUTS[k]); if(e) rejected.push(e); });
+  VAL_ROWS.forEach(function(r){ var el = $('exp-'+r.key); if(el) el.value = (ANNEX_EX1_REFS[r.key] !== undefined) ? ANNEX_EX1_REFS[r.key] : ''; });
+  recalc();
+  if(det) det.open = true;
+  if(rejected.length){
+    msg.setAttribute('role','alert');
+    setBadge(msg,'fail','Some Example 1 inputs could not be loaded: ' + rejected.join('; ') + '.');
+  } else {
+    msg.removeAttribute('role');
+    setBadge(msg,'info', (firstTime ? 'Your current inputs were saved. ' : 'Your earlier inputs are still saved. ') + 'Annex A Example 1 (M40, PPC, 20 mm crushed angular, Zone II, w/c 0.36, 75 mm slump, superplasticizer at 1.0 % with 23 % water reduction) is loaded in Steps 1\u20138 and its printed results are in the Reference column. Annex A rounds intermediate values (e.g. water 147.52 \u2192 148 kg, cement 411.11 \u2192 412 kg), so small differences are expected. SCM is left blank because Example 1 prints none. Use \u201cRestore my previous inputs\u201d to go back.');
+  }
+  var t = $('val-summary'); if(t && typeof t.scrollIntoView === 'function') t.scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+// ---- Design Assumptions & Inputs (report): plain read-back of what is entered; no engineering logic ----
+function updateAssumptions(){
+  var box = $('assump-body');
+  if(!box) return;
+  function raw(id){ var e = document.getElementById(id); return e ? e.value.trim() : ''; }
+  function opt(id){ var e = document.getElementById(id); return (e && e.selectedOptions && e.selectedOptions[0]) ? e.selectedOptions[0].textContent.replace(/\s+/g,' ').trim() : ''; }
+  function n(id, unit){ var v = raw(id); return v === '' ? '\u2014' : v + (unit ? ' ' + unit : ''); }
+  function chk(id){ var e = document.getElementById(id); return !!(e && e.checked); }
+  var scmT = raw('scmtype'), admT = raw('admixtype'), pumped = opt('placing') === 'Pumpable concrete';
+  var items = [
+    ['Grade', opt('grade')],
+    ['Exposure', opt('exposure')],
+    ['Nominal max. aggregate size', n('maxsize','mm')],
+    ['Fine aggregate zone', 'Zone ' + raw('fazone') + (chk('manufacturedsand') ? ' \u2014 manufactured / crushed sand (no automatic correction)' : '')],
+    ['Slump', n('slump','mm')],
+    ['Adopted w/c ratio (user input)', n('wc')],
+    ['Cement type', opt('cementtype')],
+    ['SCM', scmT === 'none' ? 'None' : opt('scmtype') + ', ' + n('scmpct','%') + ' replacement' + (chk('scmboost') ? ', +10% preliminary increase' : '')],
+    ['Admixture', admT === 'none' ? 'None' : opt('admixtype') + ', water reduction ' + n('admixreduction','%') + ', dosage ' + n('admixdose','%') + (raw('admixsolids') === '' ? '' : ', dry solids ' + n('admixsolids','%'))],
+    ['Coarse-aggregate volume fraction (result)', (document.getElementById('c-cafrac') || {}).textContent || '\u2014'],
+    ['Coarse aggregate moisture / absorption', n('moistca','%') + ' / ' + n('absorbca','%')],
+    ['Fine aggregate moisture / absorption', n('moistfa','%') + ' / ' + n('absorbfa','%')],
+    ['Site control', opt('sitecontrol')],
+    ['Placing / pumping', opt('placing') + (pumped ? ', coarse-aggregate reduction ' + n('pumpreduction','%') : '')]
+  ];
+  box.textContent = '';
+  items.forEach(function(it){
+    var d = document.createElement('div'); d.className = 'assump-item';
+    var k = document.createElement('span'); k.className = 'ak'; k.textContent = it[0];
+    var v = document.createElement('span'); v.className = 'av'; v.textContent = it[1] === '' ? '\u2014' : it[1];
+    d.appendChild(k); d.appendChild(v); box.appendChild(d);
+  });
+}
+function updateLimits(){
+  var a = $('vl-annex'), t = $('vl-tests');
+  if(a) a.textContent = annexStatusText;
+  if(t) t.textContent = testStatusText;
+}
+
+// ---- Test case verification: preset inputs are pushed through the REAL recalc() and its own checks are read back ----
+var TEST_CASES = [
+  {name:'Test Case 1 \u2014 M20, Mild exposure', set:{grade:'M20', exposure:'mild', wc:'0.55', admixtype:'none', admixreduction:'0', admixdose:'0'}},
+  {name:'Test Case 2 \u2014 M25, Moderate exposure', set:{grade:'M25', exposure:'moderate', wc:'0.50'}},
+  {name:'Test Case 3 \u2014 M30, Severe exposure', set:{grade:'M30', exposure:'severe', wc:'0.45'}},
+  {name:'Test Case 4 \u2014 M40, Very Severe exposure', set:{grade:'M40', exposure:'verysevere', wc:'0.42'}},
+  {name:'Test Case 5 \u2014 SCM + admixture + moisture correction', set:{grade:'M30', exposure:'moderate', wc:'0.45', scmtype:'flyash', sgscm:'2.20', scmpct:'25', scmboost:true, admixtype:'superplasticizer', admixreduction:'20', admixdose:'1', moistca:'1', absorbca:'0.5', moistfa:'3', absorbfa:'1'}}
+];
+function setQuiet(id, v){
+  var el = document.getElementById(id);
+  if(!el) return 'unknown field #'+id;
+  if(el.type === 'checkbox'){ el.checked = !!v; return ''; }
+  var prev = el.value; el.value = String(v);
+  if(el.value !== String(v)){ el.value = prev; return 'option/value not accepted for #'+id+' ('+v+')'; }
+  return '';
+}
+function readChecks(){
+  var out = {};
+  document.querySelectorAll('#design-checks-body .checkrow').forEach(function(r){
+    var st = r.classList.contains('fail') ? 'fail' : r.classList.contains('warn') ? 'warn' : r.classList.contains('info') ? 'info' : 'pass';
+    out[r.querySelector('.checklabel').textContent] = {state:st, note:r.querySelector('.checknote').textContent};
+  });
+  return out;
+}
+function worst(states){
+  return states.indexOf('fail')>=0 ? 'fail' : states.indexOf('warn')>=0 ? 'warn' : states.indexOf('info')>=0 ? 'info' : 'pass';
+}
+function runTestCases(){
+  if(testsRunning) return;
+  testsRunning = true;
+  var holder = $('test-results');
+  holder.textContent = '';
+  var saved = [];
+  document.querySelectorAll('input, select').forEach(function(el){ saved.push({el:el, value:el.value, checked:el.checked}); });
+  var statusTally = [];
+  var problems = [];
+  try{
+    TEST_CASES.forEach(function(tc){
+      // fresh defaults first (captured at page load), then the case's own inputs
+      defaultState.forEach(function(d){
+        if(!isDesignInput(d.el)) return;
+        if(d.el.type==='checkbox' || d.el.type==='radio') d.el.checked = d.checked; else d.el.value = d.value;
+      });
+      var rejected = [];
+      Object.keys(tc.set).forEach(function(k){ var e = setQuiet(k, tc.set[k]); if(e) rejected.push(e); });
+      recalc();
+      var bannerShown = $('err-banner').style.display === 'block';
+      var c = readChecks();
+      function st(l){ return c[l] ? c[l].state : 'fail'; }
+      function nt(l){ return c[l] ? c[l].note : 'check not found'; }
+      var statusEl = $('design-status');
+      var finalState = statusEl.classList.contains('fail') ? 'fail' : statusEl.classList.contains('warn') ? 'warn' : 'pass';
+      var wcShown = $('tf-wc').textContent;
+      var rows = [
+        ['Inputs accepted', rejected.length || bannerShown ? 'fail' : worst([st('Target strength'), st('Water content'), st('Specific gravity inputs'), st('Entrapped air input'), st('Trial / engineering input validity')]),
+           rejected.length ? rejected.join('; ') : (bannerShown ? 'calculator error banner is showing' : nt('Trial / engineering input validity'))],
+        ['Durability check (IS 456: max w/c, min grade)', st('Maximum w/c ratio'), nt('Maximum w/c ratio')],
+        ['w/c check', wcShown === '\u2014' ? 'fail' : 'pass', wcShown === '\u2014' ? 'adopted w/c rejected as invalid' : 'adopted w/c '+wcShown+' accepted (valid range '+WC_MIN.toFixed(2)+'\u2013'+WC_MAX.toFixed(2)+'); Fig. 1 advisory: '+nt('Target strength vs w/c (advisory)').split(' \u2014')[0]],
+        ['Cementitious content check', worst([st('Minimum cement content'), st('Maximum cement/cementitious content')]), 'min: '+nt('Minimum cement content')+' | max: '+nt('Maximum cement/cementitious content')],
+        ['Aggregate calculation', worst([st('Aggregate proportion'), st('Absolute volume / yield')]), nt('Aggregate proportion')+' | yield '+nt('Absolute volume / yield')],
+        ['Moisture correction', st('Moisture correction'), nt('Moisture correction')],
+        ['Final design status', finalState, statusEl.textContent + '  \u2014  mix 1 : ' + ($('ratio-line').textContent.replace(/^1 : /,''))]
+      ];
+      statusTally.push(tc.name.split(' \u2014')[0].replace('Test Case ','TC')+': '+(finalState==='pass'?'PASSED':finalState==='warn'?'REVIEW':'INVALID'));
+      if(rejected.length || bannerShown) problems.push(tc.name);
+      var card = document.createElement('div'); card.className = 'testcase';
+      var head = document.createElement('div'); head.className = 'tc-head';
+      var strong = document.createElement('strong'); strong.textContent = tc.name;
+      var inp = document.createElement('div'); inp.className = 'tc-inputs';
+      inp.textContent = 'Inputs set (others at defaults): ' + Object.keys(tc.set).map(function(k){ return k+'='+tc.set[k]; }).join(', ');
+      head.appendChild(strong); head.appendChild(inp);
+      var body = document.createElement('div'); body.className = 'tc-body';
+      body.innerHTML = rows.map(function(r){ return checkRowHtml(r[1], escHtml(r[0]), escHtml(r[2])); }).join('');
+      card.appendChild(head); card.appendChild(body); holder.appendChild(card);
+    });
+  } catch(e){
+    problems.push('exception: '+e.message);
+    var m = document.createElement('div'); m.textContent = 'Test run aborted: '+e.message; holder.appendChild(m);
+  }
+  // restore the user's own inputs exactly as they were
+  saved.forEach(function(d){
+    if(d.el.type==='checkbox' || d.el.type==='radio') d.el.checked = d.checked; else d.el.value = d.value;
+  });
+  testsRunning = false;
+  recalc();
+  var stamp = new Date().toLocaleTimeString();
+  testStatusText = problems.length
+    ? 'Built-in test cases: run at '+stamp+' \u2014 problem in: '+problems.join('; ')+'.'
+    : 'Built-in test cases: run at '+stamp+' \u2014 5 cases executed through the live calculator ('+statusTally.join('; ')+').';
+  updateLimits();
+}
+function escHtml(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function recalc(evt){
+ ctx.field = '';
+ ctx.trigger = (evt && evt.target && evt.target.id) ? evt.target.id : '';
+ setStep('Step 1 \u2014 Design stipulations');
+ hideError();
+ try{
+  // ---- Step 1 ----
+  var grade = val('grade');
+  var fck = gradeStrength[grade];
+  var exposure = val('exposure');
+  var maxsize = parseInt(val('maxsize'),10);
+  var shapeIsCustom = (val('aggshape') === 'custom');
+  var shapeCustomRaw = num('aggshapecustom');
+  // Custom shape correction is an engineering input: it must be an explicit,
+  // finite value inside the field's own 0-40 kg/m3 range. No silent || 0.
+  var shapeCustomInvalid = shapeIsCustom && !(isFinite(shapeCustomRaw) && shapeCustomRaw >= 0 && shapeCustomRaw <= 40);
+  var shapeCorr = shapeIsCustom ? (shapeCustomInvalid ? 0 : shapeCustomRaw) : num('aggshape');
+  $('aggshapecustomwrap').style.display = (val('aggshape') === 'custom') ? 'flex' : 'none';
+  var zone = val('fazone');
+  var slumpRaw = num('slump');
+  var slumpInvalid = !(isFinite(slumpRaw) && slumpRaw >= 0);
+  var slump = slumpInvalid ? 50 : slumpRaw; // 50 mm used only internally to keep arithmetic finite; badge + gate flag the real problem
+  var slumpBelow50 = !slumpInvalid && slump < 50;
+  var slumpBadge = $('slump-badge');
+  if(slumpInvalid){
+    setBadge(slumpBadge,'fail','Valid slump is required \u2014 enter a finite value \u2265 0 mm. The water content and the final mix cannot be calculated until this is corrected.');
+  } else if(slumpBelow50){
+    setBadge(slumpBadge,'warn','Slump is below 50 mm ('+slump.toFixed(0)+' mm). The IS 10262 water-content correction is defined relative to the 50 mm reference; this calculator extends the +3% per 25 mm rule downward (a water reduction) without a code basis. Confirm the water content from trial mixes.');
+  } else if(slump > 180){
+    setBadge(slumpBadge,'warn','Warning: unusually high slump ('+slump.toFixed(0)+' mm). Verify workability requirement and trial-mix data.');
+  } else {
+    slumpBadge.innerHTML = '';
+  }
+  var shapeBadge = $('aggshape-badge');
+  if(shapeBadge){
+    if(shapeCustomInvalid) setBadge(shapeBadge,'fail','Valid custom aggregate-shape water correction is required \u2014 enter a finite value from 0 to 40 kg/m\u00b3, or choose one of the listed aggregate types.');
+    else shapeBadge.innerHTML = '';
+  }
+  var pumped = val('placing') === 'Pumpable concrete';
+  $('pumpredwrap').style.display = pumped ? 'flex' : 'none';
+  var control = val('sitecontrol');
+
+  setText('tf-grade', grade);
+  setText('tf-exposure', $('exposure').selectedOptions[0].textContent);
+  setText('tf-maxsize', maxsize+' mm');
+  setText('tf-zone', zone);
+
+  ['row-t2-a','row-t2-b','row-t2-c'].forEach(function(id){$(id).classList.remove('hit');});
+  ['row-t1-a','row-t1-b','row-t1-c'].forEach(function(id){$(id).classList.remove('hit');});
+  var grp = (grade==='M10'||grade==='M15') ? 'a' : (grade==='M20'||grade==='M25') ? 'b' : 'c';
+  $('row-t2-'+grp).classList.add('hit');
+  $('row-t1-'+grp).classList.add('hit');
+
+  Object.keys(durability).forEach(function(k){$(durability[k].rowId).classList.remove('hit');});
+  $(durability[exposure].rowId).classList.add('hit');
+
+  ['row-size10','row-size20','row-size40'].forEach(function(id){$(id).classList.remove('hit');});
+  $('row-size'+maxsize).classList.add('hit');
+
+  ['row-agg10','row-agg20','row-agg40'].forEach(function(id){$(id).classList.remove('hit');});
+  $('row-agg'+maxsize).classList.add('hit');
+
+  // ---- Step 2: target strength ----
+  setStep('Step 2 \u2014 Target mean strength');
+  var Sbase = (grade==='M10'||grade==='M15') ? 3.5 : (grade==='M20'||grade==='M25') ? 4.0 : 5.0;
+  if(control==='fair') Sbase += 1;
+  var S, Ssrc;
+  $('customSwrap').style.display = $('customS').checked ? 'grid' : 'none';
+  var sRaw = num('Sinput');
+  var sInvalid = $('customS').checked && !(sRaw > 0 && isFinite(sRaw));
+  if($('customS').checked){ S = sInvalid ? Sbase : sRaw; Ssrc = sInvalid ? '(invalid \u2014 see warning)' : '(user-entered)'; }
+  else { S = Sbase; Ssrc = '(Table 2, '+(control==='fair'?'fair':'good')+' control)'; }
+  var X = (grade==='M10'||grade==='M15') ? 5.0 : (grade==='M20'||grade==='M25') ? 5.5 : 6.5;
+  var byS = fck + 1.65*S;
+  var byX = fck + X;
+  var ftarget = Math.max(byS, byX);
+
+  setText('c-fck', fck.toFixed(1)+' N/mm²');
+  setText('c-Ssrc', Ssrc);
+  dash('c-S', sInvalid, S.toFixed(1)+' N/mm²');
+  dash('c-165s', sInvalid, byS.toFixed(2)+' N/mm²');
+  setText('c-X', X.toFixed(1));
+  setText('c-fckX', byX.toFixed(2)+' N/mm²');
+  dash('c-ftarget', sInvalid, ftarget.toFixed(2)+' N/mm²'+(byX>byS?'  (governed by X)':'  (governed by 1.65S)'));
+  var sBadge = $('s-badge');
+  if(sBadge){
+    if(sInvalid) setBadge(sBadge,'fail','Valid standard deviation is required when custom S is selected — enter a value greater than 0.');
+    else sBadge.innerHTML = '';
+  }
+
+  // ---- Step 3: w/c ----
+  setStep('Step 3 \u2014 Water\u2013cement ratio');
+  var wcMax = durability[exposure].wc;
+  var wc = num('wc');
+  // Same limits as the min/max attributes of the #wc field (WC_MIN / WC_MAX): an out-of-range value is
+  // rejected, never clamped and never accepted just because it is > 0.
+  var wcInvalid = !(isFinite(wc) && wc >= WC_MIN && wc <= WC_MAX);
+  if(wcInvalid) wc = 0.5; // internal placeholder so downstream math stays finite; badge + gate flag the real problem
+  setText('tf-wc', wcInvalid ? '\u2014' : wc.toFixed(2));
+  var wcBadge = $('wc-badge');
+  if(wcInvalid){
+    setBadge(wcBadge,'fail', 'Water\u2013cement ratio must be a number from '+WC_MIN.toFixed(2)+' to '+WC_MAX.toFixed(2)+' (the range of this field). The value entered is blank, non-numeric or outside that range; it is rejected, not clamped. The cement content, aggregate quantities and final mix cannot be calculated until this is corrected.');
+  } else if(wc > wcMax){
+    setBadge(wcBadge,'fail', 'Exceeds durability limit for '+$('exposure').selectedOptions[0].textContent+' exposure — max free w/c is '+wcMax.toFixed(2));
+  } else {
+    setBadge(wcBadge,'pass', 'Within durability limit (max free w/c '+wcMax.toFixed(2)+' for this exposure)');
+  }
+  var minGradeIdx = gradeOrder.indexOf(gradeMinExposure[exposure]);
+  var chosenGradeIdx = gradeOrder.indexOf(grade);
+  if(chosenGradeIdx < minGradeIdx){
+    addBadge(wcBadge,'fail', 'Grade below minimum '+gradeMinExposure[exposure]+' required for this exposure');
+  }
+
+  // ---- Step 3 advisory: is the adopted w/c plausible for the target mean strength? ----
+  // IS 10262:2019 Fig. 1 is NOT digitised in this file and no curve is invented here. The check compares
+  // the adopted w/c with a reading YOU take from Fig. 1 (or from trial data), within a deviation YOU accept.
+  // It is advisory only: the worst it can do is WARN. It never blocks the final mix.
+  dash('c-ftarget3', sInvalid, ftarget.toFixed(2)+' N/mm\u00b2  (cement: '+val('cementtype')+')');
+  var figStr = val('figwc').trim(), figTolStr = val('figtol').trim();
+  var figRaw = parseFloat(figStr), figTolRaw = parseFloat(figTolStr);
+  var swcState, swcNote;
+  if(figStr==='' && figTolStr===''){
+    swcState = 'info'; swcNote = 'not evaluated \u2014 enter the Fig. 1 / trial w/c reading and the accepted deviation in Step 3 to activate this advisory check';
+  } else if(figStr==='' || figTolStr===''){
+    swcState = 'info'; swcNote = 'not evaluated \u2014 both the Fig. 1 / trial w/c reading and the accepted deviation are needed';
+  } else if(!(isFinite(figRaw) && figRaw >= WC_MIN && figRaw <= WC_MAX) || !(isFinite(figTolRaw) && figTolRaw >= 0)){
+    swcState = 'warn'; swcNote = 'not evaluated \u2014 the Fig. 1 reading must be '+WC_MIN.toFixed(2)+'\u2013'+WC_MAX.toFixed(2)+' and the accepted deviation a number \u2265 0';
+  } else if(wcInvalid){
+    swcState = 'info'; swcNote = 'not evaluated \u2014 the adopted w/c is invalid (see above)';
+  } else if(sInvalid){
+    swcState = 'info'; swcNote = 'not evaluated \u2014 the target mean strength is invalid (Step 2)';
+  } else {
+    var dwc = wc - figRaw;
+    if(Math.abs(dwc) > figTolRaw + 1e-9){
+      swcState = 'warn';
+      swcNote = dwc > 0
+        ? 'adopted w/c '+wc.toFixed(2)+' is '+dwc.toFixed(2)+' ABOVE the reading '+figRaw.toFixed(2)+' for a target of '+ftarget.toFixed(2)+' N/mm\u00b2 \u2014 the strength may fall short; confirm against IS 10262:2019 Fig. 1 or trial data'
+        : 'adopted w/c '+wc.toFixed(2)+' is '+(-dwc).toFixed(2)+' BELOW the reading '+figRaw.toFixed(2)+' for a target of '+ftarget.toFixed(2)+' N/mm\u00b2 \u2014 the mix may carry more cement than the strength needs; confirm against IS 10262:2019 Fig. 1 or trial data';
+    } else {
+      swcState = 'pass';
+      swcNote = 'adopted w/c '+wc.toFixed(2)+' is within \u00b1'+figTolRaw.toFixed(2)+' of the reading '+figRaw.toFixed(2)+' (target '+ftarget.toFixed(2)+' N/mm\u00b2)';
+    }
+  }
+  var swcBadge = $('wcstrength-badge');
+  if(swcState==='warn') setBadge(swcBadge,'warn','Advisory: '+swcNote+'.');
+  else if(swcState==='info') setBadge(swcBadge,'info','Advisory check '+swcNote+'.');
+  else setBadge(swcBadge,'pass','Advisory: '+swcNote+'.');
+
+  // ---- Step 4: water content ----
+  setStep('Step 4 \u2014 Water content');
+  var base = table34[maxsize];
+  var airRaw = num('airInput');
+  var airInvalid = $('customAir').checked && !(airRaw >= 0 && isFinite(airRaw));
+  var airPct = $('customAir').checked ? (airInvalid ? base.air : airRaw) : base.air;
+  $('customAirWrap').style.display = $('customAir').checked ? 'grid' : 'none';
+  var airBadge = $('air-badge');
+  if(airBadge){
+    if(airInvalid) setBadge(airBadge,'fail','Valid measured entrapped air is required when custom air is selected — enter a value \u2265 0.');
+    else airBadge.innerHTML = '';
+  }
+  var baseWater = base.water;
+  var slumpPct = (slump-50)/25*3;
+  var waterAfterSlump = baseWater * (1+slumpPct/100);
+  var waterAfterShape = waterAfterSlump - shapeCorr;
+  var admixType = val('admixtype');
+  var admixReductionRaw = num('admixreduction');
+  // Permitted range is the one the field itself declares (0-40%). Out-of-range
+  // values are rejected, never silently clamped to the nearest allowed value.
+  var admixReductionInvalid = admixType!=='none' && !(isFinite(admixReductionRaw) && admixReductionRaw >= 0 && admixReductionRaw <= 40);
+  var admixReduction = (admixType==='none' || admixReductionInvalid) ? 0 : admixReductionRaw;
+  var finalWater = waterAfterShape * (1 - admixReduction/100);
+  var waterWarning = finalWater <= 0 || !isFinite(finalWater);
+  if(waterWarning) finalWater = 1; // safe positive placeholder so downstream math stays finite
+  // Any invalid input feeding the water calculation blanks the water lines too.
+  var waterInputInvalid = waterWarning || slumpInvalid || shapeCustomInvalid || admixReductionInvalid;
+
+  function dash(id, invalid, text){ setText(id, invalid ? '\u2014' : text); }
+
+  setText('c-basewater', fmt(baseWater,0)+' kg/m³');
+  dash('c-slumpcorr', slumpInvalid, (slumpPct>0?'+':'')+fmt(slumpPct,1)+'%  →  '+fmt(waterAfterSlump,1)+' kg/m³');
+  dash('c-shapecorr', waterInputInvalid, '−'+fmt(shapeCorr,0)+' kg/m³  →  '+fmt(waterAfterShape,1)+' kg/m³');
+  dash('c-waterpread', waterInputInvalid, fmt(waterAfterShape,1)+' kg/m³');
+  dash('c-admixcorr', admixReductionInvalid, '−'+fmt(admixReduction,1)+'%');
+  dash('c-water', waterInputInvalid, fmt(finalWater,1)+' kg/m³ (litres)');
+  var waterBadge = $('water-badge');
+  if(waterWarning){
+    setBadge(waterBadge,'fail','Invalid water content — revise slump, aggregate shape, admixture reduction, or other input values. The final mix cannot be calculated until this is corrected; affected results below are shown as —.');
+  } else {
+    waterBadge.innerHTML = '';
+  }
+  if(admixReductionInvalid){
+    addBadge(waterBadge,'fail','Admixture selected but the trial water-reduction % is blank, non-numeric or outside the permitted 0\u201340% range — enter the manufacturer/trial value (0 if none established yet), or select "None" for admixture type. The value is not clamped for you.');
+  }
+  $('admixredwrap').style.display = admixType==='none' ? 'none' : 'flex';
+  $('admixsolidswrap').style.display = admixType==='none' ? 'none' : 'flex';
+
+  // ---- Step 5: cementitious content ----
+  setStep('Step 5 \u2014 Cementitious material content');
+  var scmType = val('scmtype');
+  var scmPctRaw = num('scmpct');
+  // Permitted range is the field's own 0-50%. 60% is rejected, not turned into
+  // 50%; -5% is rejected, not turned into 0%.
+  var scmPctInvalid = scmType!=='none' && !(isFinite(scmPctRaw) && scmPctRaw >= 0 && scmPctRaw <= 50);
+  var scmPct = (scmType==='none' || scmPctInvalid) ? 0 : scmPctRaw;
+  $('scmboostwrap').style.display = scmType==='none' ? 'none' : 'block';
+
+  var aggSizeAdjRaw = num('cementminadj');
+  var cementMinAdjInvalid = !(isFinite(aggSizeAdjRaw));
+  var aggSizeAdj = cementMinAdjInvalid ? 0 : aggSizeAdjRaw; // 0 is an internal placeholder only; the gate below blocks the design
+
+  var cementRaw = finalWater / wc;
+  var cementCriticalFail = waterWarning || wcInvalid || slumpInvalid || shapeCustomInvalid || cementMinAdjInvalid || admixReductionInvalid;
+  var applyBoost = scmType!=='none' && $('scmboost').checked;
+  var cementBoosted = applyBoost ? cementRaw*1.10 : cementRaw;
+  var cementMin = durability[exposure].cement + aggSizeAdj;
+  var cementAdopt = Math.max(cementBoosted, cementMin);
+  var maxCementRaw = num('maxcement');
+  var maxCementInvalid = !(maxCementRaw > 0 && isFinite(maxCementRaw));
+  var maxCement = maxCementInvalid ? 450 : maxCementRaw; // 450 kg/m³ used only as an internal placeholder to keep arithmetic finite — never displayed as if entered; see maxCementInvalid badge/check.
+  var scmQty = cementAdopt * scmPct/100;
+  var opcQty = cementAdopt - scmQty;
+  var wcm = finalWater / cementAdopt;
+  var maxCemExceeded = cementAdopt > maxCement;
+
+  dash('c-cementraw', cementCriticalFail, fmt(finalWater,1)+' \u00f7 '+wc.toFixed(2)+' = '+fmt(cementRaw,1)+' kg/m\u00b3');
+  dash('c-cementboost', cementCriticalFail, applyBoost ? (fmt(cementRaw,1)+' \u00d7 1.10 = '+fmt(cementBoosted,1)+' kg/m\u00b3') : 'not applied');
+  setText('c-cementmin-base', fmt(durability[exposure].cement,0)+' kg/m³');
+  dash('c-cementmin-adj', cementMinAdjInvalid, (aggSizeAdj>=0?'+':'')+fmt(aggSizeAdj,0)+' kg/m³');
+  dash('c-cementmin', cementMinAdjInvalid, fmt(cementMin,0)+' kg/m³');
+  dash('c-cementadopt', cementCriticalFail, fmt(cementAdopt,1)+' kg/m\u00b3');
+  dash('c-scmqty', cementCriticalFail, fmt(scmQty,1)+' kg/m\u00b3');
+  dash('c-opcqty', cementCriticalFail, fmt(opcQty,1)+' kg/m\u00b3');
+  dash('c-wcm', cementCriticalFail, wcm.toFixed(3));
+
+  var cementBadge = $('cement-badge');
+  if(cementMinAdjInvalid){
+    setBadge(cementBadge,'fail','Aggregate-size adjustment to the minimum cement content is blank or non-numeric \u2014 enter a finite value in kg/m\u00b3 (enter 0 for no adjustment). It is not silently treated as zero.');
+  } else if(waterWarning){
+    setBadge(cementBadge,'fail','Cannot determine cementitious content — the water content in Step 4 is invalid. Correct that first.');
+  } else if(maxCementInvalid){
+    setBadge(cementBadge,'fail','Maximum cement/cementitious content field is blank or invalid — enter a positive project limit before a final mix can be shown.');
+  } else if(maxCemExceeded){
+    setBadge(cementBadge,'fail', 'RE-DESIGN REQUIRED \u2014 maximum cementitious content exceeded: '+fmt(cementAdopt,1)+' kg/m\u00b3 adopted vs '+fmt(maxCement,0)+' kg/m\u00b3 stipulated limit (IS 456, Cl. 8.2.4.2). Revise w/c, SCM replacement, or the mix design \u2014 this is not automatically corrected.');
+    if(cementBoosted < cementMin) addBadge(cementBadge,'warn','Adopted content is set by the durability minimum ('+fmt(cementMin,0)+' kg/m\u00b3), which itself exceeds the stipulated maximum \u2014 the limits conflict.');
+  } else if(cementBoosted < cementMin){
+    setBadge(cementBadge,'warn', 'Governed by durability minimum ('+fmt(cementMin,0)+' kg/m\u00b3) rather than the w/c calculation');
+  } else {
+    setBadge(cementBadge,'pass', 'Between durability minimum and '+fmt(maxCement,0)+' kg/m\u00b3 maximum');
+  }
+  if(scmPctInvalid){
+    addBadge(cementBadge,'fail','SCM replacement % must be a number from 0 to 50 — the entered value is blank, non-numeric or outside the permitted range. It is rejected, not clamped: enter a value inside the range (0 disables the SCM contribution), or select "None".');
+  }
+
+  // ---- Step 6: aggregate proportion ----
+  setStep('Step 6 \u2014 Aggregate proportion');
+  var caBase = table5[maxsize][zone];
+  var caWcCorr = ((0.50 - wcm)/0.05) * 0.01;
+  var caFrac = caBase + caWcCorr;
+  var pumpRaw = num('pumpreduction');
+  // Permitted range 0-10% (Cl. 5.5.2 / field limits). 15% is rejected, not
+  // reduced to 10%; -5% is rejected, not raised to 0%.
+  var pumpInvalid = pumped && !(isFinite(pumpRaw) && pumpRaw >= 0 && pumpRaw <= 10);
+  var pumpPct = (pumped && !pumpInvalid) ? pumpRaw : 0;
+  var pumpNote = pumped ? caFrac*(pumpPct/100) : 0;
+  if(pumped) caFrac = caFrac*(1-pumpPct/100);
+  // No clamping: caFrac keeps its calculated value. Outside CA_FRAC_MIN..CA_FRAC_MAX the design FAILS.
+  // (Only judged when the upstream inputs are valid, otherwise the value is built on placeholders.)
+  var caFracOutOfRange = !(isFinite(caFrac) && caFrac >= CA_FRAC_MIN && caFrac <= CA_FRAC_MAX);
+  var caFracInvalid = !cementCriticalFail && !pumpInvalid && caFracOutOfRange;
+  var faFrac = 1 - caFrac;
+  var pumpBadge = $('pump-badge');
+  if(pumpBadge){
+    if(pumpInvalid) setBadge(pumpBadge,'fail','Pumpable concrete selected but the coarse-aggregate reduction % is blank, non-numeric or outside the permitted 0\u201310% range (Cl. 5.5.2). The value is rejected, not clamped — enter a value inside the range.');
+    else pumpBadge.innerHTML = '';
+  }
+
+  setText('c-cabase', caBase.toFixed(2));
+  dash('c-cawc', cementCriticalFail, (caWcCorr>=0?'+':'')+caWcCorr.toFixed(3));
+  dash('c-capump', cementCriticalFail, pumped ? ('\u2212'+fmt(pumpNote,3)+' ('+pumpPct.toFixed(0)+'%)') : 'not applied');
+  dash('c-cafrac', cementCriticalFail, caFrac.toFixed(3) + (caFracInvalid ? '  (out of range \u2014 not clamped)' : ''));
+  dash('c-fafrac', cementCriticalFail || caFracInvalid, faFrac.toFixed(3));
+  var zoneBadge = $('zone-badge');
+  if(zone==='IV'){
+    setBadge(zoneBadge,'warn','Table 5, Note 4: Zone IV fine aggregate should not be used in reinforced concrete unless trials confirm the mix is suitable');
+  } else {
+    zoneBadge.innerHTML = '';
+  }
+  if($('manufacturedsand').checked){
+    addBadge(zoneBadge,'warn','Manufactured / crushed sand selected. No universal automatic correction applied. Determine adjustment through trial mix / laboratory validation. (Table 5, Note 3: the coarse-aggregate volume should be suitably increased above the Table 5 figure \u2014 the standard gives no fixed amount.)');
+  }
+  if(caFracInvalid){
+    addBadge(zoneBadge,'fail','Calculated coarse-aggregate volume fraction is '+caFrac.toFixed(3)+' (unclamped), outside the application plausibility range '+CA_FRAC_MIN.toFixed(2)+'\u2013'+CA_FRAC_MAX.toFixed(2)+' (this range is not an IS 10262 prescribed limit). It is NOT adjusted to the nearest allowed value; the final mix is blocked. Review the w/c ratio, fine-aggregate zone, aggregate size and pumping reduction.');
+  }
+
+  setStep('Step 8 \u2014 Site batch correction (moisture / absorption inputs)');
+  // Moisture/absorption raw inputs are read here (ahead of Step 8) only so the
+  // master validation gate below can include them. The correction arithmetic
+  // itself is unchanged and still lives in Step 8.
+  var moistCaRaw = num('moistca');
+  var absorbCaRaw = num('absorbca');
+  var moistFaRaw = num('moistfa');
+  var absorbFaRaw = num('absorbfa');
+  // Each of the four must be numeric, finite and non-negative. MC < absorption,
+  // MC = absorption and MC > absorption are all VALID states (Step 8).
+  var moistureInvalid = !(moistCaRaw>=0 && isFinite(moistCaRaw)) || !(absorbCaRaw>=0 && isFinite(absorbCaRaw))
+    || !(moistFaRaw>=0 && isFinite(moistFaRaw)) || !(absorbFaRaw>=0 && isFinite(absorbFaRaw));
+
+  // ---- Step 7: absolute volume method ----
+  setStep('Step 7 \u2014 Absolute volume method');
+  // A specific gravity is valid only if finite and > 0. When one is invalid, SG_PLACEHOLDER is used ONLY so
+  // the arithmetic stays finite; sgInvalid then blocks the design and every dependent output shows a dash.
+  function sgOk(x){ return isFinite(x) && x > 0; }
+  var sgCementRaw = num('sgcement');
+  var sgCement = sgOk(sgCementRaw) ? sgCementRaw : SG_PLACEHOLDER;
+  var sgScmRaw = num('sgscm');
+  var sgScm = sgOk(sgScmRaw) ? sgScmRaw : SG_PLACEHOLDER;
+  var sgCaRaw = num('sgca');
+  var sgCa = sgOk(sgCaRaw) ? sgCaRaw : SG_PLACEHOLDER;
+  var sgFaRaw = num('sgfa');
+  var sgFa = sgOk(sgFaRaw) ? sgFaRaw : SG_PLACEHOLDER;
+  var sgAdmixRaw = num('sgadmix');
+  var sgAdmix = sgOk(sgAdmixRaw) ? sgAdmixRaw : SG_PLACEHOLDER;
+  var sgInvalid = !sgOk(sgCementRaw) || !sgOk(sgCaRaw) || !sgOk(sgFaRaw) || (admixType!=='none' && !sgOk(sgAdmixRaw)) || (scmType!=='none' && !sgOk(sgScmRaw));
+  var admixDoseRaw = num('admixdose');
+  // Permitted range is the field's own 0-5% of cementitious mass.
+  var admixDoseInvalid = admixType!=='none' && !(isFinite(admixDoseRaw) && admixDoseRaw >= 0 && admixDoseRaw <= 5);
+  var admixDose = (admixType==='none' || admixDoseInvalid) ? 0 : admixDoseRaw;
+  var admixMass = cementAdopt * admixDose/100;
+  // Optional admixture water contribution. Blank = neglected (unchanged behaviour). If given it must be 0 < S < 100
+  // (rejected, never clamped). Only evaluated when an admixture is selected.
+  var admixSolidsRaw = val('admixsolids').trim();
+  var admixSolidsGiven = admixType!=='none' && admixSolidsRaw !== '';
+  var admixSolidsNum = admixSolidsGiven ? parseFloat(admixSolidsRaw) : NaN;
+  var admixSolidsInvalid = admixSolidsGiven && !(isFinite(admixSolidsNum) && admixSolidsNum > 0 && admixSolidsNum < 100);
+  var admixWater = (admixSolidsGiven && !admixSolidsInvalid) ? admixMass * (1 - admixSolidsNum/100) : 0;
+  var solidsBadge = $('admixsolids-badge');
+  if(admixSolidsInvalid) setBadge(solidsBadge,'fail','Admixture dry solids content must be above 0 and below 100 %, or left blank. The value is rejected, not clamped; the final mix is blocked until it is corrected.');
+  else solidsBadge.innerHTML = '';
+  // Fraction split ratio "a:b": strictly parsed, never defaulted. Invalid -> flagged and included in the gate.
+  var fracM = FRAC_RATIO_RE.exec(val('fracRatio'));
+  var fracP0 = fracM ? parseFloat(fracM[1]) : NaN;
+  var fracP1 = fracM ? parseFloat(fracM[2]) : NaN;
+  var fracRatioInvalid = !(fracM && isFinite(fracP0) && isFinite(fracP1) && (fracP0 + fracP1) > 0);
+  var criticalFail = cementCriticalFail || sgInvalid || airInvalid || scmPctInvalid || admixDoseInvalid || pumpInvalid;
+
+  var vAir = airPct/100;
+  var vCement = opcQty / (sgCement*1000);
+  var vScm = scmQty>0 ? scmQty/(sgScm*1000) : 0;
+  var vWater = finalWater/1000;
+  var vAdmix = admixMass>0 ? admixMass/(sgAdmix*1000) : 0;
+  var vAgg = 1 - (vAir+vCement+vScm+vWater+vAdmix);
+  var aggVolInvalid = vAgg <= 0;
+  var reportFail = criticalFail || aggVolInvalid || caFracInvalid;
+  // Master gate for the FINAL MIX section: computational invalidity (reportFail)
+  // plus mandatory durability/code violations. A durability violation (w/c or
+  // grade below the exposure minimum, or max cementitious content exceeded)
+  // does not corrupt the arithmetic — the numbers above remain visible for
+  // diagnosis — but the final proportions must not be presented as a valid
+  // design until the user revises the input (Cl. 5.8: design assumptions
+  // must satisfy IS 456 durability requirements before trial mixing).
+  var gradeBelowMin = chosenGradeIdx < minGradeIdx;
+  var mandatoryFail = reportFail || (wc > wcMax) || gradeBelowMin || maxCemExceeded || sInvalid || maxCementInvalid
+    || admixReductionInvalid || admixDoseInvalid || scmPctInvalid || pumpInvalid
+    || slumpInvalid || shapeCustomInvalid || cementMinAdjInvalid || moistureInvalid || fracRatioInvalid || admixSolidsInvalid;
+  var vCa = vAgg*caFrac;
+  var vFa = vAgg*faFrac;
+  var mCa = vCa*sgCa*1000;
+  var mFa = vFa*sgFa*1000;
+
+  setText('c-vair', vAir.toFixed(4)+' m\u00b3');
+  dash('c-vcement', criticalFail, vCement.toFixed(4)+' m\u00b3');
+  dash('c-vscm', criticalFail, vScm.toFixed(4)+' m\u00b3');
+  dash('c-vwater', waterWarning, vWater.toFixed(4)+' m\u00b3');
+  dash('c-vadmix', criticalFail, vAdmix.toFixed(4)+' m\u00b3   ('+fmt(admixMass,2)+' kg)');
+  dash('c-vagg', criticalFail, vAgg.toFixed(4)+' m\u00b3');
+  dash('c-vca', reportFail, vCa.toFixed(4)+' m\u00b3');
+  dash('c-vfa', reportFail, vFa.toFixed(4)+' m\u00b3');
+  dash('c-mca', reportFail, fmt(mCa,1)+' kg/m\u00b3');
+
+  // Coarse aggregate two-fraction split (Cl. 5.6) — purely splits mCa, doesn't derive the ratio
+  var fracI, fracII;
+  var fracBadge = $('frac-badge');
+  if(fracRatioInvalid){
+    setBadge(fracBadge,'fail','The fraction ratio is blank or malformed. Enter two non-negative numbers separated by a colon, e.g. 60:40 (not both zero). It is not defaulted; the final mix is blocked until it is valid.');
+  } else {
+    fracBadge.innerHTML = '';
+  }
+  if(reportFail || fracRatioInvalid){
+    setText('c-fracI', '\u2014');
+    setText('c-fracII', '\u2014');
+  } else {
+    var fSum = fracP0 + fracP1;
+    fracI = mCa * fracP0/fSum;
+    fracII = mCa * fracP1/fSum;
+    setText('c-fracI', fmt(fracI,1)+' kg/m\u00b3 ('+(100*fracP0/fSum).toFixed(0)+'%)');
+    setText('c-fracII', fmt(fracII,1)+' kg/m\u00b3 ('+(100*fracP1/fSum).toFixed(0)+'%)');
+  }
+  dash('c-mfa', reportFail, fmt(mFa,1)+' kg/m\u00b3');
+  var sgBadge = $('sg-badge');
+  if(sgInvalid){
+    setBadge(sgBadge,'fail','One or more required specific gravity fields (cement, SCM if enabled, coarse aggregate, fine aggregate) is zero, blank or negative. The aggregate/cementitious masses above are not calculated \u2014 shown as \u2014 until you enter valid values.');
+  } else if(aggVolInvalid){
+    setBadge(sgBadge,'fail','Invalid aggregate volume. The non-aggregate constituent volumes exceed 1 m³. Check water, cementitious content, admixture dosage and specific gravities.');
+  } else {
+    sgBadge.innerHTML = '';
+  }
+  if(admixDoseInvalid){
+    addBadge(sgBadge,'fail','Admixture dosage % (Step 4) is blank, non-numeric or outside the permitted 0\u20135% range — enter the manufacturer/trial dosage. The value is rejected, not clamped.');
+  }
+
+  // ---- Step 8: moisture correction (SSD design mass -> oven-dry -> as-batched wet mass) ----
+  // mCa/mFa (from Step 7) are SSD design quantities. Oven-dry is the common
+  // anchor: M_OD = M_SSD / (1 + A/100); wet batch mass M_wet = M_OD * (1 + MC/100);
+  // free/surface water contributed = M_wet - M_SSD. This is mathematically
+  // equivalent to M_OD*(MC-A)/100 and introduces no double counting: the extra
+  // aggregate mass and the water it carries are both accounted for exactly once.
+  var moistureInputInvalid = moistureInvalid;
+  var moistCa = moistureInputInvalid ? 0 : moistCaRaw;
+  var absorbCa = moistureInputInvalid ? 0 : absorbCaRaw;
+  var moistFa = moistureInputInvalid ? 0 : moistFaRaw;
+  var absorbFa = moistureInputInvalid ? 0 : absorbFaRaw;
+
+  var moistureWarnBadge = $('moisture-warn-badge');
+  var moistureWarnMsgs = [];
+  if(moistureInputInvalid){
+    moistureWarnMsgs.push({fail:true, text:'FAIL — valid moisture/absorption values are required. All four fields must be numbers ≥ 0; the corrected batch quantities below are not calculated, and the final mix is blocked, until they are. (Moisture below absorption is perfectly valid — it simply means the aggregate is drier than SSD and needs extra water.)'});
+  }
+  if(moistCa > 5 || moistFa > 10){
+    moistureWarnMsgs.push({fail:false, text:'Warning: unusually high aggregate moisture content. Verify the test/site measurement.'});
+  }
+  if(absorbCa > 3 || absorbFa > 3){
+    moistureWarnMsgs.push({fail:false, text:'Warning: unusually high aggregate absorption. Verify laboratory/test data.'});
+  }
+  moistureWarnBadge.innerHTML = moistureWarnMsgs.map(function(m){ return '<span class="badge '+(m.fail?'fail':'warn')+'">'+m.text+'</span>'; }).join('');
+
+  var moistGate = reportFail || moistureInputInvalid;
+  var mCaOD = mCa / (1 + absorbCa/100);
+  var mFaOD = mFa / (1 + absorbFa/100);
+  var mCaCorr = mCaOD * (1 + moistCa/100);
+  var mFaCorr = mFaOD * (1 + moistFa/100);
+  var freeWaterCa = mCaCorr - mCa;
+  var freeWaterFa = mFaCorr - mFa;
+  var totalFreeWater = freeWaterCa + freeWaterFa;
+  var waterCorrRaw = finalWater - totalFreeWater - admixWater;
+  var waterCorr = Math.max(waterCorrRaw, 0);
+  var mixerWaterExcess = waterCorrRaw < 0 ? -waterCorrRaw : 0;
+
+  function moistureStatus(freeMoist){
+    if(Math.abs(freeMoist) < 1e-9) return 'SSD (moisture = absorption)';
+    return freeMoist > 0
+      ? 'Wetter than SSD, +'+freeMoist.toFixed(2)+'% free moisture \u2014 contributes water'
+      : 'Drier than SSD, '+freeMoist.toFixed(2)+'% deficit \u2014 needs extra water to reach SSD';
+  }
+  dash('c-ca-status', moistGate, moistureStatus(moistCa-absorbCa));
+  dash('c-fa-status', moistGate, moistureStatus(moistFa-absorbFa));
+  dash('c-ca-od', moistGate, fmt(mCaOD,1)+' kg/m\u00b3');
+  dash('c-fa-od', moistGate, fmt(mFaOD,1)+' kg/m\u00b3');
+  dash('c-mca-corr', moistGate, fmt(mCaCorr,1)+' kg/m\u00b3');
+  dash('c-mfa-corr', moistGate, fmt(mFaCorr,1)+' kg/m\u00b3');
+  dash('c-water-design', moistGate, fmt(finalWater,1)+' kg/m\u00b3');
+  dash('c-water-contrib', moistGate, fmt(totalFreeWater,1)+' kg/m\u00b3  (CA '+fmt(freeWaterCa,1)+' + FA '+fmt(freeWaterFa,1)+')');
+  dash('c-water-admix', moistGate, admixSolidsInvalid ? 'invalid solids content \u2014 see Step 4'
+    : ((admixSolidsGiven && !admixSolidsInvalid) ? '\u2212'+fmt(admixWater,2)+' kg/m\u00b3  (deducted: '+fmt(admixMass,2)+' kg \u00d7 (1 \u2212 '+admixSolidsNum+'/100))'
+    : (admixType==='none' ? 'not applicable (no admixture)' : 'neglected (assumed 100% solid or accounted on site)')));
+  dash('c-water-corr', moistGate, fmt(waterCorr,1)+' kg/m\u00b3'+(mixerWaterExcess>0 ? ' (held at 0 \u2014 see warning)' : ''));
+
+  var moistureBadge = $('moisture-badge');
+  if(moistGate){
+    moistureBadge.innerHTML = '';
+  } else if(mixerWaterExcess > 0){
+    setBadge(moistureBadge,'warn','Water credits (aggregate free water'+(admixWater>0?' + admixture water':'')+' = '+fmt(totalFreeWater+admixWater,1)+' kg/m\u00b3) exceed the design water requirement ('+fmt(finalWater,1)+' kg/m\u00b3) by '+fmt(mixerWaterExcess,1)+' kg/m\u00b3. Mixer-added water is therefore zero, not negative \u2014 but this water-balance excess must be reviewed before batching (re-check moisture readings, or the aggregate stockpile is too wet for this mix). The design is not automatically production-ready.');
+  } else {
+    moistureBadge.innerHTML = '';
+  }
+
+  // ---- Report ----
+  setStep('Final mix / report');
+  var ratioFa = mFa/cementAdopt;
+  var ratioCa = mCa/cementAdopt;
+  var binderLabel = scmQty>0 ? 'cementitious material' : 'cement';
+  var ratioLabel = scmQty>0 ? 'w/cm' : 'w/c';
+  var ratioLongLabel = scmQty>0 ? 'w/cm — water / total cementitious materials ratio' : 'w/c';
+
+  lastExport = null;
+  if(mandatoryFail){
+    setText('ratio-line', '1 : \u2014 : \u2014');
+    setText('tf-ratio', '\u2014');
+    var invalidReason = admixSolidsInvalid
+      ? 'Admixture dry solids content (Step 4) must be above 0 and below 100 % or left blank \u2014 the mixer water cannot be established.'
+      : slumpInvalid
+      ? 'Slump (Step 1) is blank or not a valid number ≥ 0 — the water content cannot be established. No final mix can be shown until this is corrected.'
+      : shapeCustomInvalid
+      ? 'Custom aggregate-shape water correction (Step 1) is blank, non-numeric or outside 0–40 kg/m³.'
+      : cementMinAdjInvalid
+      ? 'Aggregate-size adjustment to the minimum cement content (Step 5) is blank or non-numeric — enter 0 if no adjustment applies.'
+      : moistureInputInvalid
+      ? 'Moisture / absorption values (Step 8) must all be numeric and ≥ 0 — the as-batched quantities cannot be established.'
+      : wcInvalid
+      ? 'Invalid water\u2013cement ratio in Step 3 \u2014 it must be a number from '+WC_MIN.toFixed(2)+' to '+WC_MAX.toFixed(2)+'. No final mix can be shown until this is corrected.'
+      : waterWarning
+        ? 'Invalid water content — revise slump, aggregate shape, admixture reduction, or other input values. No final mix can be shown until Step 4 is valid.'
+        : sgInvalid
+          ? 'Invalid specific gravity input — see Step 7. No final mix can be shown until corrected.'
+          : airInvalid
+            ? 'Custom entrapped air selected but invalid — see Step 4. Enter a value \u2265 0 or turn off the custom-air option.'
+            : aggVolInvalid
+              ? 'Invalid aggregate volume — the non-aggregate constituent volumes (Step 7) exceed 1 m³. Check water, cementitious content, admixture dosage and specific gravities.'
+              : sInvalid
+                ? 'Custom standard deviation selected but invalid — see Step 2. Enter a value greater than 0 or turn off the custom-S option.'
+                : maxCementInvalid
+                  ? 'Maximum cement/cementitious content field (Step 5) is blank or invalid \u2014 enter a positive project limit.'
+                  : admixReductionInvalid
+                    ? 'Admixture selected but the trial water-reduction % (Step 4) is blank or invalid.'
+                    : admixDoseInvalid
+                      ? 'Admixture selected but the dosage % (Step 4) is blank or invalid.'
+                      : scmPctInvalid
+                        ? 'SCM selected but the replacement % (Step 5) is blank or invalid.'
+                        : pumpInvalid
+                          ? 'Pumpable concrete selected but the reduction % (Step 1) is blank or invalid.'
+                          : caFracInvalid
+                            ? 'Coarse-aggregate volume fraction is '+caFrac.toFixed(3)+' (unclamped), outside the application plausibility range '+CA_FRAC_MIN.toFixed(2)+'\u2013'+CA_FRAC_MAX.toFixed(2)+' (not an IS 10262 limit) \u2014 see Step 6. It is not adjusted for you.'
+                            : fracRatioInvalid
+                              ? 'The coarse-aggregate fraction split ratio (Step 6) is blank or malformed \u2014 enter it as e.g. 60:40.'
+                              : (wc > wcMax)
+                            ? 'Selected w/c ('+wc.toFixed(2)+') exceeds the IS 456 durability maximum ('+wcMax.toFixed(2)+') for this exposure — see Step 3. Revise the w/c ratio; it is not automatically lowered for you.'
+                            : gradeBelowMin
+                              ? 'Selected grade '+grade+' is below the IS 456 minimum grade ('+gradeMinExposure[exposure]+') required for this exposure — see Step 3. Choose a higher grade; it is not automatically changed for you.'
+                              : 'Maximum cementitious content exceeded (Step 5) — '+fmt(cementAdopt,1)+' kg/m\u00b3 adopted vs '+fmt(maxCement,0)+' kg/m\u00b3 stipulated limit. Revise w/c, SCM replacement, or the mix design.';
+    setText('ratio-sub', invalidReason);
+    $('qty-body').innerHTML = '<tr><td colspan="4" style="color:var(--fail);font-weight:600;">DESIGN INVALID — final mix not generated. Resolve the failed design check(s) flagged above and below, then the sheet will recalculate automatically.</td></tr>';
+  } else {
+    setText('ratio-line', '1 : '+ratioFa.toFixed(2)+' : '+ratioCa.toFixed(2));
+    setText('tf-ratio', '1 : '+ratioFa.toFixed(2)+' : '+ratioCa.toFixed(2));
+    setText('ratio-sub', binderLabel+' : fine aggregate : coarse aggregate, by mass — free '+ratioLongLabel+' '+wcm.toFixed(2));
+
+    var perBag = opcQty>0 ? 50/opcQty : 0;
+    var rows = [];
+    rows.push(['Cement (OPC)', opcQty, 'kg', 50, opcQty]);
+    if(scmQty>0) rows.push([scmType==='flyash'?'Fly ash':scmType==='ggbs'?'GGBS':'Silica fume', scmQty, 'kg', scmQty*perBag, scmQty]);
+    rows.push(['Water', finalWater, 'kg (l)', finalWater*perBag, waterCorr]);
+    rows.push(['Fine aggregate (sand)', mFa, 'kg', mFa*perBag, mFaCorr]);
+    rows.push(['Coarse aggregate', mCa, 'kg', mCa*perBag, mCaCorr]);
+    var fShare0 = fracP0/(fracP0+fracP1), fShare1 = fracP1/(fracP0+fracP1);
+    rows.push(['\u21b3 Fraction I (larger size)', mCa*fShare0, 'kg', mCa*perBag*fShare0, mCaCorr*fShare0, true]);
+    rows.push(['\u21b3 Fraction II (smaller size)', mCa*fShare1, 'kg', mCa*perBag*fShare1, mCaCorr*fShare1, true]);
+    if(admixMass>0) rows.push([admixType==='plasticizer'?'Plasticizer':'Superplasticizer', admixMass, 'kg', admixMass*perBag, admixMass]);
+
+    var html = rows.map(function(r){
+      return '<tr'+(r[5]?' class="sub"':'')+'><td>'+r[0]+'</td><td class="num">'+fmt(r[1],1)+' '+r[2]+'</td><td class="num">'+fmt(r[4],1)+' '+r[2]+'</td><td class="num">'+fmt(r[3],2)+' kg</td></tr>';
+    }).join('') + '<tr class="sub"><td>Free '+ratioLabel+' ratio</td><td class="num">'+wcm.toFixed(2)+'</td><td class="num">\u2014</td><td class="num">\u2014</td></tr>';
+    $('qty-body').innerHTML = html;
+    lastExport = {grade:grade, exposure:$('exposure').selectedOptions[0].textContent.trim(), cement:val('cementtype'),
+      ratioLabel:ratioLabel, wcm:wcm, ratio:'1 : '+ratioFa.toFixed(2)+' : '+ratioCa.toFixed(2), rows:rows, perBag:perBag};
+  }
+
+  var totalVolCheck = vAir+vCement+vScm+vWater+vAdmix+vCa+vFa;
+  var yieldBadge = $('yield-badge');
+  if(reportFail){
+    yieldBadge.className='badge fail'; yieldBadge.textContent = 'cannot verify \u2014 invalid input above';
+  } else if(Math.abs(totalVolCheck-1) < 0.01){
+    yieldBadge.className='badge pass'; yieldBadge.textContent = 'yields '+totalVolCheck.toFixed(3)+' m\u00b3 \u2713';
+  } else {
+    yieldBadge.className='badge warn'; yieldBadge.textContent = 'yields '+totalVolCheck.toFixed(3)+' m\u00b3 \u2014 check inputs';
+  }
+
+  setStep('Design checks / overall status');
+  // ---- Header / report presentation (reads already-computed values above; no new engineering logic) ----
+  setText('rs-grade', grade);
+  dash('rs-wc', reportFail, wcm.toFixed(2));
+  var rsWcLabelEl = $('rs-wc-label');
+  if(rsWcLabelEl) rsWcLabelEl.textContent = ratioLabel==='w/cm' ? 'Free w/cm ratio' : 'Free w/c ratio';
+  dash('rs-cementitious', cementCriticalFail, fmt(cementAdopt,1)+' kg/m\u00b3');
+  dash('rs-yield', reportFail, totalVolCheck.toFixed(3)+' m\u00b3');
+
+  var checks = [];
+  checks.push({label:'Target strength', state: sInvalid?'fail':'pass', note: sInvalid ? 'Custom standard deviation invalid — a value > 0 is required' : (ftarget.toFixed(2)+' N/mm\u00b2 target computed')});
+  var wcState = wcInvalid ? 'fail' : (wc>wcMax ? 'fail' : 'pass');
+  var wcNote = wcInvalid ? ('w/c must be a number from '+WC_MIN.toFixed(2)+' to '+WC_MAX.toFixed(2)) : ('w/c '+wc.toFixed(2)+' vs max '+wcMax.toFixed(2));
+  if(chosenGradeIdx < minGradeIdx){ wcState='fail'; wcNote += ' — grade below minimum '+gradeMinExposure[exposure]; }
+  checks.push({label:'Maximum w/c ratio', state:wcState, note:wcNote});
+  checks.push({label:'Target strength vs w/c (advisory)', state:swcState, note:swcNote});
+
+  checks.push({label:'Water content', state: (waterWarning||slumpInvalid)?'fail':(slumpBelow50?'warn':'pass'), note: (waterWarning||slumpInvalid) ? 'Invalid — revise slump, aggregate shape, admixture reduction, or other input values' : (fmt(finalWater,1)+' kg/m\u00b3'+(slumpBelow50 ? ' \u2014 slump '+slump.toFixed(0)+' mm is below the 50 mm reference; the correction is extrapolated, confirm by trial' : ''))});
+  checks.push({label:'Specific gravity inputs', state: sgInvalid?'fail':'pass', note: sgInvalid ? 'One or more required SG fields invalid — see Step 7' : 'all required fields valid'});
+  checks.push({label:'Entrapped air input', state: airInvalid?'fail':'pass', note: airInvalid ? 'Custom entrapped air selected but invalid — a value \u2265 0 is required (Step 4)' : (airPct.toFixed(2)+'% used')});
+
+  var minCemState = cementCriticalFail ? 'fail' : ((cementBoosted < cementMin) ? 'warn' : 'pass');
+  var minCemNote = cementCriticalFail ? 'cannot evaluate — invalid w/c or water content' : (fmt(cementMin,0)+' kg/m\u00b3 required, '+fmt(cementAdopt,1)+' kg/m\u00b3 adopted');
+  checks.push({label:'Minimum cement content', state:minCemState, note:minCemNote});
+
+  var maxCemState = cementCriticalFail ? 'fail' : (maxCementInvalid ? 'fail' : (maxCemExceeded ? 'fail' : 'pass'));
+  var maxCemNote = cementCriticalFail ? 'cannot evaluate — invalid w/c or water content' : (maxCementInvalid ? 'Maximum cement/cementitious field (Step 5) is blank or invalid — enter a positive project limit' : (maxCemExceeded ? ('RE-DESIGN REQUIRED — '+fmt(cementAdopt,1)+' kg/m\u00b3 vs '+fmt(maxCement,0)+' kg/m\u00b3 limit') : (fmt(cementAdopt,1)+' kg/m\u00b3 vs '+fmt(maxCement,0)+' kg/m\u00b3 limit')));
+  checks.push({label:'Maximum cement/cementitious content', state:maxCemState, note:maxCemNote});
+
+  var aggState = (cementCriticalFail || caFracInvalid) ? 'fail' : ((zone==='IV' || $('manufacturedsand').checked) ? 'warn' : 'pass');
+  var aggNote = cementCriticalFail ? 'cannot evaluate — invalid w/c or water content' : (caFracInvalid ? ('CA volume fraction '+caFrac.toFixed(3)+' (unclamped) is outside the application plausibility range '+CA_FRAC_MIN.toFixed(2)+'\u2013'+CA_FRAC_MAX.toFixed(2)+' (not an IS 10262 limit) \u2014 not adjusted, design blocked') : ('CA volume fraction '+caFrac.toFixed(3)+', zone '+zone));
+  checks.push({label:'Aggregate proportion', state:aggState, note:aggNote});
+
+  var yieldState = reportFail ? 'fail' : ((Math.abs(totalVolCheck-1) < 0.01) ? 'pass' : 'warn');
+  var yieldNote = reportFail ? 'cannot evaluate — resolve the invalid input above' : (totalVolCheck.toFixed(3)+' m\u00b3');
+  checks.push({label:'Absolute volume / yield', state:yieldState, note:yieldNote});
+
+  var moistState = reportFail ? 'fail' : (moistureInputInvalid ? 'fail' : ((mixerWaterExcess>0) ? 'warn' : 'pass'));
+  var moistNote = reportFail ? 'cannot evaluate — resolve the invalid input above' : (moistureInputInvalid ? 'Moisture/absorption fields (Step 8) must all be numeric and ≥ 0 — site batch correction not calculated' : ((mixerWaterExcess>0) ? ('Water credits (aggregate free water'+(admixWater>0?' + admixture water':'')+') exceed design demand by '+fmt(mixerWaterExcess,1)+' kg/m\u00b3 \u2014 mixer water held at 0, review batching (Step 8)') : (fmt(waterCorr,1)+' kg/m\u00b3 to add')));
+  checks.push({label:'Moisture correction', state:moistState, note:moistNote});
+
+  // Consolidated trial/engineering-input validity row — every silent-fallback
+  // input now reports here as well as at its own step, so the overall status
+  // badge can never read PASS while the final mix is blocked.
+  var inputIssues = [];
+  if(slumpInvalid) inputIssues.push('slump (Step 1)');
+  if(shapeCustomInvalid) inputIssues.push('custom aggregate-shape correction, 0–40 kg/m³ (Step 1)');
+  if(pumpInvalid) inputIssues.push('pumping reduction %, 0–10 (Step 1)');
+  if(admixReductionInvalid) inputIssues.push('admixture water reduction %, 0–40 (Step 4)');
+  if(admixDoseInvalid) inputIssues.push('admixture dosage %, 0–5 (Step 4)');
+  if(cementMinAdjInvalid) inputIssues.push('aggregate-size adjustment to min. cement content (Step 5)');
+  if(scmPctInvalid) inputIssues.push('SCM replacement %, 0–50 (Step 5)');
+  if(maxCementInvalid) inputIssues.push('maximum cement/cementitious content (Step 5)');
+  if(moistureInputInvalid) inputIssues.push('moisture / absorption values (Step 8)');
+  if(admixSolidsInvalid) inputIssues.push('admixture dry solids content, above 0 and below 100 % or blank (Step 4)');
+  if(fracRatioInvalid) inputIssues.push('coarse-aggregate fraction split ratio, e.g. 60:40 (Step 6)');
+  checks.push({
+    label:'Trial / engineering input validity',
+    state: inputIssues.length ? 'fail' : 'pass',
+    note: inputIssues.length
+      ? ('Invalid or out-of-range: '+inputIssues.join('; ')+'. Values are rejected, never silently defaulted or clamped.')
+      : 'all trial inputs numeric and within their permitted ranges'
+  });
+
+  // Trial-mix results (Cl. 5.8) are advisory and never feed the design. A malformed entry is still
+  // flagged here (WARN) so it cannot sit unnoticed; blank entries add nothing.
+  var trialRes = updateTrial({slump: slumpInvalid ? null : slump, air: airInvalid ? null : airPct, ftarget: sInvalid ? null : ftarget});
+  if(trialRes.invalid) checks.push({label:'Trial mix results (advisory)', state:'warn', note:'invalid entry in the Trial mix block \u2014 advice not evaluated for: '+trialRes.invalid});
+
+  $('design-checks-body').innerHTML = checks.map(function(c){
+    var icon = c.state==='pass' ? '\u2713' : (c.state==='warn' ? '\u26a0' : (c.state==='info' ? 'i' : '\u2715'));
+    return '<div class="checkrow '+c.state+'"><span class="checkicon">'+icon+'</span><span class="checklabel">'+c.label+'</span><span class="checknote">'+c.note+'</span></div>';
+  }).join('');
+
+  // ---- Overall design status (reflects the single most serious check state — never a lone green badge when a mandatory check has failed) ----
+  var anyFail = checks.some(function(c){ return c.state==='fail'; });
+  var anyWarn = checks.some(function(c){ return c.state==='warn'; });
+  var statusBadge = $('design-status');
+  var eyebrowEl = $('report-eyebrow');
+  if(anyFail){
+    statusBadge.className='badge fail';
+    statusBadge.textContent='DESIGN INVALID \u2014 RESOLVE FAILED CHECKS';
+    if(eyebrowEl) eyebrowEl.textContent = 'Design Invalid \u2014 Not a Final Mix';
+  } else if(anyWarn){
+    statusBadge.className='badge warn';
+    statusBadge.textContent='DESIGN REVIEW REQUIRED \u2014 see checks below';
+    if(eyebrowEl) eyebrowEl.textContent = 'Final Mix Design \u2014 Review Required';
+  } else {
+    statusBadge.className='badge pass';
+    statusBadge.textContent='DESIGN CHECKS PASSED \u2014 TRIAL MIX REQUIRED (Cl. 5.8)';
+    if(eyebrowEl) eyebrowEl.textContent = 'Final Mix Design';
+  }
+
+  setStep('Validation table');
+  updateValidation({
+    ftarget: sInvalid ? null : ftarget,
+    wcm: cementCriticalFail ? null : wcm,
+    water: waterInputInvalid ? null : finalWater,
+    cementitious: cementCriticalFail ? null : cementAdopt,
+    opc: cementCriticalFail ? null : opcQty,
+    scm: cementCriticalFail ? null : scmQty,
+    caFrac: (cementCriticalFail || pumpInvalid || caFracInvalid) ? null : caFrac,
+    mFa: reportFail ? null : mFa,
+    mCa: reportFail ? null : mCa,
+    admix: criticalFail ? null : admixMass
+  });
+  setStep('Report assumptions');
+  updateAssumptions();
+  updateLimits();
+ } catch(e){
+   showError(e);
+   if(window.console) console.error(e);
+ }
+}
+
+var lastExport = null;   // set by recalc() only when the final mix is valid; read by exportBatch()
+var defaultState = [];
+function captureDefaults(){
+  document.querySelectorAll('input, select').forEach(function(el){
+    defaultState.push({el:el, value:el.value, checked:el.checked});
+  });
+}
+function resetDefaults(){
+  defaultState.forEach(function(d){
+    if(d.el.type==='checkbox' || d.el.type==='radio') d.el.checked = d.checked;
+    else d.el.value = d.value;
+  });
+  recalc();
+}
+window.resetDefaults = resetDefaults;
+window.recalc = recalc;
+
+document.addEventListener('DOMContentLoaded', function(){
+  setStep('page initialisation');
+  // Keep the w/c fields' HTML min/max identical to the limits the code enforces.
+  ['wc','figwc'].forEach(function(id){ var e = $(id); if(e){ e.min = WC_MIN; e.max = WC_MAX; } });
+  buildValidationTable();
+  captureDefaults();
+  $('annexLoad').addEventListener('click', annexEnter);
+  $('annexRestore').addEventListener('click', restoreInputs);
+  $('annexExample1').addEventListener('click', annexLoadExample1);
+  $('exportBtn').addEventListener('click', exportBatch);
+  $('testRun').addEventListener('click', runTestCases);
+  // closed <details> do not print: open the ones that hold printed results, then put them back
+  var printOpened = [];
+  window.addEventListener('beforeprint', function(){
+    printOpened = [];
+    document.querySelectorAll('.step details.adv, .report details.adv').forEach(function(d){ if(!d.open){ d.open = true; printOpened.push(d); } });
+  });
+  window.addEventListener('afterprint', function(){ printOpened.forEach(function(d){ d.open = false; }); printOpened = []; });
+  $('customS').addEventListener('change', function(e){
+    $('customSwrap').style.display = e.target.checked ? 'grid' : 'none';
+    recalc();
+  });
+  $('customAir').addEventListener('change', function(e){
+    $('customAirWrap').style.display = e.target.checked ? 'grid' : 'none';
+    recalc();
+  });
+  $('aggshape').addEventListener('change', function(e){
+    $('aggshapecustomwrap').style.display = (e.target.value === 'custom') ? 'flex' : 'none';
+    recalc();
+  });
+  $('admixtype').addEventListener('change', function(){
+    var t = $('admixtype').value;
+    $('admixreduction').value = t==='none' ? 0 : (t==='plasticizer' ? 8 : 20);
+    $('admixdose').value = t==='none' ? 0 : (t==='plasticizer' ? 0.4 : 1.0);
+    recalc();
+  });
+  $('scmtype').addEventListener('change', function(){
+    var t = $('scmtype').value;
+    $('sgscm').value = scmSG[t] || 2.20;
+    if(t==='none'){ $('scmpct').value = 0; $('scmboost').checked = false; }
+    recalc();
+  });
+
+  var controls = document.querySelectorAll('input, select');
+  controls.forEach(function(el){
+    el.addEventListener('input', recalc);
+    el.addEventListener('change', recalc);
+  });
+
+  document.querySelectorAll('.step-nav-link').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var target = document.getElementById(btn.getAttribute('data-target'));
+      if(target && typeof target.scrollIntoView === 'function') target.scrollIntoView({behavior:'smooth', block:'start'});
+    });
+  });
+
+  var calcBtnEl = $('calcBtn');
+  if(calcBtnEl){
+    calcBtnEl.addEventListener('click', function(){
+      recalc();
+      var u = $('calcUpdated');
+      if(u){
+        u.classList.add('show');
+        clearTimeout(calcBtnEl._flashTimer);
+        calcBtnEl._flashTimer = setTimeout(function(){ u.classList.remove('show'); }, 1800);
+      }
+    });
+  }
+
+  recalc();
+});
+})();
+</script>
+
+<!--
+  v7 CHANGES (polish; no equation, constant, durability check or validation guard was changed)
+    - Coarse-aggregate two-fraction split moved into Step 6; both fraction masses repeated under Coarse aggregate in the Final Mix table. FRAC_RATIO_RE and its gate unchanged.
+    - Optional admixture dry-solids input (Step 4). Blank = water neglected, as before. If 0 < S < 100, admixture water = admixture mass x (1 - S/100) is deducted in Step 8. Out-of-range values are rejected (not clamped) and block the final mix.
+    - Grades M65-M80 listed as disabled options with a Section 3 (HSC) scope note.
+    - "Copy batch proportions (plain text)" button and optional project-name field.
+    - Annex A helper: loads Example 1 (M40, PPC) inputs and printed reference values; the user's inputs are snapshotted first.
+-->
+<!--
+  CHANGES MADE (v6 and earlier)
+  ------------------------------------------------------------
+  Corrected:
+    - Removed a fabricated citation ("IS 456 Table 6") attached to the
+      aggregate-size adjustment on minimum cement content in Step 5. No such
+      table could be verified in IS 10262:2019 or IS 456:2000. The adjustment
+      is now an explicit, user-editable field defaulting to 0 kg/m³, labelled
+      as an engineering assumption rather than a code-mandated value.
+  Clarified (no calculation change):
+    - Step 3 w/c field relabelled "Selected / adopted water-cement ratio"
+      with an explicit "user input — trial value" tag, so it is not read as
+      an IS-prescribed number. It is still checked against the IS 456
+      Table 5 durability limit exactly as before, with pass/warn/fail status.
+  Accessibility:
+    - err-banner now uses role="alert"/aria-live="assertive" so validation
+      errors are announced to screen readers.
+    - The final-mix report region uses aria-live="polite" so recalculated
+      results are announced without interrupting the user.
+  Responsive:
+    - Added a sub-420px breakpoint (tighter title-block/step padding) and
+      allowed computation lines to wrap instead of clipping on narrow phones.
+
+  UNCHANGED / VERIFIED AGAINST IS 10262:2019 (no edits needed):
+    Table 1 (X), Table 2 (S), Table 3 (entrapped air), Table 4 (water
+    content), Table 5 (coarse-aggregate volume fraction by zone), and the
+    IS 456:2000 Table 5 durability minimums/max w/c/min grade — all checked
+    against the published standard and found correct as originally coded.
+
+  REVISION 3 (this pass):
+    - Moisture correction rewritten onto an explicit oven-dry basis
+      (M_OD = M_SSD/(1+A/100); wet mass = M_OD*(1+MC/100); free water =
+      wet - SSD). Mathematically verified against the SSD-basis
+      approximation previously used and against the drier/at-SSD/wetter
+      test cases; no double counting of aggregate mass or water.
+    - Negative mixer water is no longer just displayed at zero: the design
+      water demand, total free water, and the excess magnitude are all
+      shown explicitly, with a REVIEW warning rather than a silent clamp.
+    - Fixed a real bug: the air-badge element referenced by the custom
+      entrapped-air validation didn't exist in the HTML, so that warning
+      could never render. Added the missing element.
+    - sInvalid (custom S) and airInvalid (custom air) now propagate into
+      the master mandatoryFail gate — previously they only showed a local
+      badge but did not block the final mix.
+    - Removed remaining silent parseFloat(...)||default fallbacks for
+      engineering inputs: max cement/cementitious content, admixture water
+      reduction %, admixture dosage %, SCM replacement %, and pump
+      reduction % now each have an explicit *Invalid flag; when the
+      relevant type/mode is selected but the field is blank or
+      non-numeric, the design is flagged FAIL (not silently defaulted)
+      and the final mix is blocked, with the specific reason named.
+    - Aggregate-fraction clamp (0.30-0.85) already surfaced a warning from
+      the previous pass; kept as REVIEW (not FAIL) per this pass's
+      instruction not to over-block engineering-judgement cases.
+
+  REVISION 4 (FINAL VALIDATION-ONLY PASS):
+    Scope: input validation + identification only. No change to the IS
+    10262:2019 methodology, the IS 456:2000 durability checks, the 8-step
+    workflow, the UI/layout, the report, or any formula. Verified: 327
+    valid-input combinations (grades x exposures x aggregate sizes x FA zones,
+    plus SCM / admixture / pumping / moisture / custom-shape / custom-S /
+    custom-air / cement-min-adjustment variations) produce byte-identical
+    quantities, ratios and PASS/REVIEW/FAIL states to the previous revision.
+
+    - Custom aggregate-shape correction: parseFloat(...)||0 removed. Now has
+      its own shapeCustomInvalid flag (finite, 0-40 kg/m3), a FAIL badge next
+      to the field, and a place in the master gate.
+    - Slump: Math.max(0, parseFloat(...)||0) removed. slumpInvalid flag
+      (finite, >= 0) with a FAIL badge; blank/non-numeric slump no longer
+      silently becomes 0 mm.
+    - Cement-minimum aggregate-size adjustment: parseFloat(...)||0 removed.
+      cementMinAdjInvalid flag (must be finite; 0 must be entered explicitly)
+      with a FAIL badge; the min-cement lines blank out while invalid.
+    - No silent clamping anywhere on engineering inputs. Values outside the
+      range the field itself declares are REJECTED, not moved to the nearest
+      allowed value: SCM replacement 0-50% (60% -> FAIL, not 50%), pumping
+      reduction 0-10% (15% -> FAIL, not 10%), admixture water reduction
+      0-40%, admixture dosage 0-5%. Math.min/Math.max clamps on these four
+      inputs were deleted.
+    - Moisture / absorption: the correction formulas are UNCHANGED
+      (M_OD = M_SSD/(1+A/100); M_wet = M_OD*(1+MC/100); free water =
+      M_wet - M_SSD). Validation is now strict (all four fields numeric,
+      finite, >= 0) and the flag is wired into the master gate and reported
+      as FAIL rather than REVIEW. MC < A, MC = A and MC > A all remain valid
+      states and are unchanged: drier than SSD adds water, at SSD contributes
+      zero, wetter than SSD reduces mixer water.
+    - Master gate (mandatoryFail) now also includes slump, custom aggregate
+      shape, cement-min adjustment and moisture/absorption validity, on top
+      of the flags already there.
+    - New consolidated "Trial / engineering input validity" row in Design
+      Checks. Previously a flag such as an invalid SCM % blocked the final
+      mix but appeared in no check row, so the overall badge could read
+      PASS while the mix was blocked. It cannot now.
+    - Invalid admixture dosage and invalid pumping reduction now blank the
+      dependent quantities instead of showing figures computed from a
+      substituted 0.
+    - Internal placeholders (to keep intermediate arithmetic finite) are
+      retained where needed, but every one of them is paired with a flag in
+      the gate, so a substituted value can never be presented as a design.
+    - Identification added: "Prepared by: Himanshu Meena / Group: 3" under
+      the title block, and "Prepared by: Himanshu Meena | Group: 3" in the
+      final-mix report header (carried into the print view).
+    - Checked: no NaN or Infinity reaches the report in any tested state;
+      validation messages and the overall status update on every input
+      change; a previously valid result cannot remain on screen as valid
+      once a critical input becomes invalid.
+
+  STILL INTENTIONALLY USER/TRIAL-DEPENDENT (not automated, by design):
+    - SCM replacement %, admixture water-reduction % and dosage, aggregate
+      shape water correction, manufactured-sand correction, pumping
+      reduction %, maximum cement content stipulation, specific gravities,
+      moisture/absorption readings, coarse-aggregate two-fraction split
+      ratio, and the new min-cement aggregate-size adjustment above.
+    - The strength–w/c relationship (IS 10262 Fig. 1) is not digitized;
+      the user reads it off the curve and enters the resulting w/c.
+  v6 CHANGES (final polish + verification; core calculation methodology NOT changed)
+    - Annex A: no verified source values were supplied, so nothing is embedded. The feature is now "Manual Annex A
+      Verification": button "Enter Annex A Reference Values" saves the user's inputs, opens the panel and focuses the
+      Reference column; "Restore my previous inputs" is enabled only once inputs have been saved. The placeholder
+      arrays ANNEX_A_INPUTS / ANNEX_A_EXPECTED and the old loader were removed (they could not do anything).
+    - Validation table columns: Parameter | Calculator | Reference | Difference | Status, with Match / Mismatch /
+      Not available / Review. Summary and the report say NOT VERIFIED until reference values are entered.
+    - Coarse-aggregate fraction 0.30-0.85 is labelled everywhere as an application plausibility range, not an
+      IS 10262 prescribed limit; still never clamped.
+    - New report blocks: "Design Assumptions & Inputs" and "Verification & Limitations" (with live Annex A and
+      test-case status lines).
+    - New "Calculator Test Case Verification" panel: five preset cases pushed through the real recalc(); results are read back
+      from the calculator's own design checks; the user's inputs are saved and restored around the run.
+    - Print layout: input controls, reference tables, navigation, buttons, validation/test/trial panels hidden;
+      calculation lines, report, assumptions, design checks, limitations kept; closed <details> with printed
+      results are opened for printing and closed again afterwards.
+  v5 CHANGES
+    - Step 3: advisory "target strength vs w/c" check (inputs figwc / figtol; WARN only; inactive until both
+      are filled; no Fig. 1 curve is embedded). Result listed in Design Checks.
+    - No clamping of the coarse-aggregate fraction (CA_FRAC_MIN / CA_FRAC_MAX): out of range is a FAIL that
+      blocks the final mix and shows the unclamped value.
+    - Fraction split ratio is parsed strictly (FRAC_RATIO_RE); blank or malformed is a FAIL in the gate; the
+      60:40 default is gone from the calculation.
+    - Specific gravities: invalid values are no longer replaced by 3.15 / 2.2 / 2.74 / 2.65 / 1.145.
+      SG_PLACEHOLDER keeps arithmetic finite only; dependent outputs show a dash and the design is blocked.
+    - Table 5 verification aid (comment above table5 and the header comment).
+    - Validation section (Annex A) and Trial mix adjustment block (Cl. 5.8, advisory).
+    - Slump below 50 mm warns; w/c validated against the same limits as the input attributes (0.20-0.70);
+      the earlier 0.25-0.65 "unusual w/c" warning was removed; admixture water is stated as neglected;
+      the error banner names the step and input.
+-->
+</body>
+</html>
